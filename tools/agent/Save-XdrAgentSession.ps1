@@ -15,8 +15,14 @@
     .PARAMETER Path
         Where to write the session file. Defaults to ~/.xdr-agent/session.json.
 
+    .PARAMETER InRepo
+        Saves to <repo>/.xdr-agent/session.json instead (git- and docker-ignored). Use this
+        when Claude runs in Cowork with access to this folder, because Cowork can't see your
+        home directory. Takes priority over ~/.xdr-agent when present.
+
     .PARAMETER Clear
-        Deletes the saved session file instead of writing one.
+        Deletes the saved session file instead of writing one. Combine with -InRepo to clear
+        the in-repo copy.
 
     .EXAMPLE
         Connect-XdrByBrowserExtension
@@ -29,10 +35,16 @@
 param (
     [string]$Path = (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.xdr-agent/session.json'),
 
+    [switch]$InRepo,
+
     [switch]$Clear
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($InRepo) {
+    $Path = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path '.xdr-agent/session.json'
+}
 
 if ($Clear) {
     if (Test-Path -LiteralPath $Path) {

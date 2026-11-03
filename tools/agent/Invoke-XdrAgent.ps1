@@ -48,7 +48,9 @@
         Json (default), Table or List.
 
     .PARAMETER SessionPath
-        Session file written by Save-XdrAgentSession.ps1. Defaults to ~/.xdr-agent/session.json.
+        Session file written by Save-XdrAgentSession.ps1. Defaults to $env:XDR_SESSION_PATH,
+        then <repo>/.xdr-agent/session.json if it exists (for Cowork, which only sees the
+        shared folder), then ~/.xdr-agent/session.json.
 
     .PARAMETER MaxSessionAgeHours
         Refuse a saved session older than this. Defaults to 12.
@@ -80,7 +82,7 @@ param (
     [ValidateSet('Json', 'Table', 'List')]
     [string]$Format = 'Json',
 
-    [string]$SessionPath = (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.xdr-agent/session.json'),
+    [string]$SessionPath,
 
     [double]$MaxSessionAgeHours = 12
 )
@@ -152,6 +154,12 @@ if ($refusals.Count -gt 0) {
 }
 
 # Load the saved session
+if (-not $SessionPath) {
+    $repoSessionPath = Join-Path $PSScriptRoot '../../.xdr-agent/session.json'
+    $SessionPath = if ($env:XDR_SESSION_PATH) { $env:XDR_SESSION_PATH }
+    elseif (Test-Path -LiteralPath $repoSessionPath) { $repoSessionPath }
+    else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.xdr-agent/session.json' }
+}
 if (-not (Test-Path -LiteralPath $SessionPath)) {
     Write-Stderr "NO SESSION: $SessionPath doesn't exist. Ask the user to connect (e.g. Connect-XdrByBrowserExtension) and then run tools/agent/Save-XdrAgentSession.ps1 in the same PowerShell session."
     exit 4
@@ -169,7 +177,8 @@ if ($ExpectTenantId -and $saved.TenantId -ne $ExpectTenantId) {
 }
 Write-Stderr "[xdr-agent] Tenant: $($saved.TenantName) | $($saved.TenantId) | as $($saved.Account)"
 
-# The module uses PowerShell 7 syntax and doesn't parse under Windows PowerShell 5.1.
+# The module uses PowerShell 7 syntax (a 7.3 clean {} block, ForEach-Object -Parallel) and
+# doesn't parse under Windows PowerShell 5.1.
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     Write-Stderr "WRONG POWERSHELL: XDRInternals needs PowerShell 7 (pwsh). This is $($PSVersionTable.PSVersion). Run the wrapper with pwsh, e.g. in the Docker container."
     exit 6

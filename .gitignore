@@ -2,3 +2,5 @@
 TestResults
 test-results
 investigations
+.xdr-agent
+dist

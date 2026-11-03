@@ -10,3 +10,6 @@ images
 XDRay
 XDRay Firefox
 .devcontainer
+.xdr-agent
+investigations
+dist
