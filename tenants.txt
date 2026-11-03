@@ -1,4 +1,27 @@
-﻿Authentication failed against tenant 23ffaa85-ba95-4afe-83f8-bec1204ec961 'The Electoral Commission': AADSTS53003: Access has been blocked by Conditional Access policies. The access policy does not allow token issuance. Trace ID: a9a9ec76-b01c-4d3e-adf0-da7946a7c400 Correlation ID: 2bdc8bee-75ba-4792-ad7f-a77ed6ff32a5 Timestamp: 2026-10-07 12:41:04Z
+﻿# Defender XDR MTO tenants (Get-XdrMtoTenantList, 2026-11-03, as adam.waldie@cybanetix.com)
+
+Name                                  TenantId
+------------------------------------  ------------------------------------
+Argus Media                           36326f6d-2a20-41ce-99e2-f06c56ced29a
+ASOS.com Ltd                          4af8322c-80ee-4819-a9ce-863d5afbea1c
+Cambridge                             75d6cc78-71b9-42e6-aa2a-b9889a0f080f
+Carpenters Group                      30c0e8bd-1958-4011-bbba-1bef1c3abd51
+Croda                                 ce37246c-a47b-4e72-ac75-1f10b15a9379
+Currys                                f4fd83f8-cc5f-4fc6-bf63-41c416a63bcd
+Cybanetix Ltd                         5f6cb372-3153-4b59-b2ab-e833d35c6b61
+Elkjøp Nordic                         661f8f5f-1e7d-4d4d-a886-1d2661c4ddf8
+ERM                                   f2fe6bd3-9c4a-485b-ae69-e18820a88130
+Experience Education                  8f59e3d2-8c4d-4b93-a155-bb363b640eb2
+First Rate Exchange Services Limited  f79ae67e-4e2c-4bf3-af42-387d3d40e68e
+Freeths LLP                           2cca93a4-c0c4-42f5-ae36-3463e1d1a051
+Hargreaves Lansdown                   90578e2d-fce8-4c57-a1a6-2b4909a9dc4d
+Ideagen plc                           1b7b26ac-444b-49f9-b397-7932bf0bac82
+Ocean Technologies Group              46f6cbc7-c844-4175-90c4-dd0f275853f1
+Urenco                                a788d036-3272-4064-9bab-da84c1943144
+
+# Azure CLI tenants and subscriptions (az login output, 2026-10-07)
+
+Authentication failed against tenant 23ffaa85-ba95-4afe-83f8-bec1204ec961 'The Electoral Commission': AADSTS53003: Access has been blocked by Conditional Access policies. The access policy does not allow token issuance. Trace ID: a9a9ec76-b01c-4d3e-adf0-da7946a7c400 Correlation ID: 2bdc8bee-75ba-4792-ad7f-a77ed6ff32a5 Timestamp: 2026-10-07 12:41:04Z
 Authentication failed against tenant 30c0e8bd-1958-4011-bbba-1bef1c3abd51 'Carpenters Group': AADSTS50076: Due to a configuration change made by your administrator, or because you moved to a new location, you must use multi-factor authentication to access '797f4846-ba00-4fd7-ba43-dac1f8f63013'. Trace ID: a6a93900-6555-4b8b-b6a1-760cfba47300 Correlation ID: 3d5fbaaa-117e-43b5-b30a-2a02c5e0487c Timestamp: 2026-10-07 12:41:05Z
 Authentication failed against tenant 36326f6d-2a20-41ce-99e2-f06c56ced29a 'Argus Media': AADSTS50076: Due to a configuration change made by your administrator, or because you moved to a new location, you must use multi-factor authentication to access '797f4846-ba00-4fd7-ba43-dac1f8f63013'. Trace ID: 2affa061-9cca-4b2b-a0a2-b29805b3b100 Correlation ID: ed0cba52-7772-4fe3-8379-4350c142acb2 Timestamp: 2026-10-07 12:41:06Z
 Authentication failed against tenant 46f6cbc7-c844-4175-90c4-dd0f275853f1 'Ocean Technologies Group': AADSTS500571: The guest user account is disabled. Trace ID: e270ff7b-35d5-4e93-a3d2-09713a2c3200 Correlation ID: 869f431d-a49f-41af-863e-9ceba215263c Timestamp: 2026-10-07 12:41:06Z

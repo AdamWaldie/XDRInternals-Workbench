@@ -4,3 +4,4 @@ test-results
 investigations
 .xdr-agent
 dist
+tenants.local.csv

@@ -21,6 +21,11 @@ If neither is available, tell the user what's needed: either the MCP server in C
    - On their PowerShell 7 machine: `Connect-XdrByBrowser` (or `Connect-XdrByBrowserExtension` with the extension in `chrome-ext/`).
    - Then `./tools/agent/Save-XdrAgentSession.ps1`. Add `-InRepo` for the folder route.
    - Don't retry in a loop.
+5. Standup and teardown are scripted, and both run only when the user asks:
+   - Standup: `./tools/agent/Start-XdrWorkbench.ps1 -Tenant <name, partial name or ID> -Case <ref>` (`-ListTenants` shows the choices). Ask which customer if the user hasn't said; never reuse a tenant from an earlier case. It opens a Chrome incognito window on that tenant. The user signs in there and clicks Relay from that window, with the extension allowed in incognito.
+   - Teardown and token clearance: `./tools/agent/Stop-XdrWorkbench.ps1`. The saved session stays until the user asks for this.
+   - The token is saved to `<repo>/.xdr-agent/session.json` (git- and docker-ignored; the save script refuses any path git would track).
+6. When setup fails or a call misbehaves, run `pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json` (on the user's machine for the Chrome and Windows checks) and relay each FAIL with its fix.
 
 ## MCP route
 
@@ -54,13 +59,13 @@ Use exact IDs. Times are UTC.
   3. Context: `Get-XdrActionsCenterHistory`, `Get-XdrEndpointDeviceTag`.
 - **User:** `Get-XdrIdentityUser -Upn x`, `Get-XdrIdentityUserTimeline -Upn x -LastNDays 7` (save to a file), and `Get-XdrCloudAppsActivityTimeline -LastNDays 1`.
 - **Advanced Hunting:** start with `summarize` or `count` to size the data, then `project` and `take`. Check columns with `Get-XdrAdvancedHuntingTableSchema`. Hunting is rate limited.
-- **IOC sweep:** one query with `let iocs = dynamic([...]);` across `DeviceNetworkEvents`, `DeviceFileEvents`, `DeviceProcessEvents`, `EmailEvents`, `IdentityLogonEvents`, `CloudAppEvents` and `AADSignInEventsBeta`. `summarize` first and last seen per table and entity.
+- **IOC sweep:** one query with `let iocs = dynamic([...]);` across `DeviceNetworkEvents`, `DeviceFileEvents`, `DeviceProcessEvents`, `EmailEvents`, `IdentityLogonEvents`, `CloudAppEvents` and `EntraIdSignInEvents` (never `AADSignInEventsBeta`). `summarize` first and last seen per table and entity.
 - **Posture:** `Get-XdrTenantWorkloadStatus`, `Get-XdrEndpointDeviceTotals`, `Get-XdrIdentityDomainControllerCoverage`, `Get-XdrEndpointAdvancedFeatures`, `Get-XdrSuppressionRule`, `Get-XdrXspmChokePoint`.
-- **Unknown parameters:** `Get-Help <cmdlet> -Full | Out-String`. The full cmdlet list is in [reference/cmdlets.md](reference/cmdlets.md).
+- **Unknown parameters:** look the cmdlet up in [reference/usage/INDEX.md](reference/usage/INDEX.md), which links to full syntax, parameters, allowed values and examples for all 133 cmdlets. Fall back to `Get-Help <cmdlet> -Full | Out-String`.
 
 ## Rules
 
 - **Read-only by default.** For containment or changes, propose the exact command, target, tenant and reason, then wait for an explicit yes for that one action.
-- **One tenant at a time.** Use multi-tenant hunting (`tenant_ids` / `-TenantIds`) only for tenants the user named.
+- **One customer per case.** A hunt runs separately inside each tenant it names and the rows come back tagged `TenantId`/`TenantName`; KQL never joins or totals across tenants, and an aggregate returns one row per tenant. Incidents, devices, timelines and identity cmdlets answer only for the session tenant. On the folder route the wrapper enforces a case lock (`.xdr-agent/case.json` from the standup, or `-CaseTenantId`), refuses multi-tenant hunts without `-AllowMultiTenant`, refuses entity cmdlets when the case tenant isn't the session tenant, discards rows from tenants no hunt named (exit 7), and flags tenants that errored as `TENANT NOT SEARCHED` (exit 2). For an estate sweep the user asked for, keep `TenantId`/`TenantName` in the output, split it with `tools/agent/Split-XdrMtoResult.ps1`, report each tenant as hits, searched with no rows, or not searched, and never put one customer's data or name in another customer's material. Qualify entities with their customer ("Customer A / DC01").
 - **Customer data stays local.** Keep evidence in `investigations/`. Don't paste customer data into web searches or other external tools.
 - **Report** scope, the answer with a confidence level, a UTC timeline, entities and IOCs, and findings, each with the exact command or KQL behind it. Also report gaps (missing telemetry, retention, truncated results, errors) and recommended actions, which you don't execute. "No results" means not observed in that window and those tables, never "didn't happen".

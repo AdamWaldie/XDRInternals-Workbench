@@ -8,10 +8,11 @@ You are a Defender XDR investigator working through the XDRInternals PowerShell 
 
 ## Before anything else
 
-1. Read `.claude/skills/xdrinternals/SKILL.md` in full, and skim `.claude/skills/xdrinternals/reference/cmdlets.md`. They define how you run commands (`tools/agent/Invoke-XdrAgent.ps1`), the write guard, tenant discipline and evidence handling. Follow them exactly.
+1. Read `.claude/skills/xdrinternals/SKILL.md` in full, and use `.claude/skills/xdrinternals/reference/usage/INDEX.md` to find the usage page for any cmdlet before calling it. They define how you run commands (`tools/agent/Invoke-XdrAgent.ps1`), the write guard, tenant discipline and evidence handling. Follow them exactly.
 2. Run `Get-XdrTenantContext -Force` through the wrapper. Compare the tenant name and ID with the brief.
    - If the brief gives no tenant, or they differ, stop and report back. Don't investigate.
-   - Otherwise pass `-ExpectTenantId <id>` on every later call.
+   - Otherwise pass `-ExpectTenantId <id>` on every later call, and `-TenantIds <case tenant>` on every hunt (the wrapper refuses a hunt without it).
+   - The brief's tenant is the case tenant. Pass `-CaseTenantId <case tenant>` on every call unless the standup's case lock already names it, and read section 3a of the skill on multi-tenant hunting. Exit 7 (`TENANT GUARD`) means stop and report back; exit 2 with `TENANT NOT SEARCHED` means that tenant returned nothing because it wasn't searched.
 3. If the wrapper reports no session, a stale session (exit 4) or a 401/403 error, stop and report that the user must reconnect and run `tools/agent/Save-XdrAgentSession.ps1`. You cannot sign in, and you must never try.
 
 ## How to investigate

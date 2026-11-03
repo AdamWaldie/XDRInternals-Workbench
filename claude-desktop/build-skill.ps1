@@ -14,6 +14,8 @@ $referenceDir = Join-Path $skillDir 'reference'
 
 $null = New-Item -ItemType Directory -Path $referenceDir -Force
 Copy-Item (Join-Path $repoRoot '.claude/skills/xdrinternals/reference/cmdlets.md') $referenceDir -Force
+$usageSource = Join-Path $repoRoot '.claude/skills/xdrinternals/reference/usage'
+if (Test-Path $usageSource) { Copy-Item $usageSource $referenceDir -Recurse -Force }
 
 $dist = Join-Path $repoRoot 'dist'
 $null = New-Item -ItemType Directory -Path $dist -Force

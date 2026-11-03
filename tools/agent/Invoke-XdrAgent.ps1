@@ -16,7 +16,7 @@
         manages the session. The guard catches mistakes; it isn't a sandbox.
 
         Exit codes: 0 ok, 1 the command threw, 2 non-terminating errors (partial results),
-        3 refused by the write guard, 4 no or stale session, 5 tenant mismatch,
+        3 refused by the write guard, 4 no or stale session, 5 tenant mismatch, 7 tenant guard,
         6 not PowerShell 7.
 
     .PARAMETER Command
@@ -55,6 +55,22 @@
     .PARAMETER MaxSessionAgeHours
         Refuse a saved session older than this. Defaults to 12.
 
+    .PARAMETER CaseTenantId
+        Locks hunting to one customer: every Invoke-XdrMtoAdvancedHunting call must name exactly
+        this tenant in -TenantIds. Defaults to $env:XDR_CASE_TENANT_ID, then to the case tenant
+        Start-XdrWorkbench.ps1 recorded in <repo>/.xdr-agent/case.json (skipped when
+        -AllowMultiTenant is passed). The session tenant (-ExpectTenantId) can differ when the case tenant is reached
+        through MTO.
+
+    .PARAMETER AllowMultiTenant
+        Allows a hunt that names more than one tenant (an estate sweep the user asked for). Not
+        combinable with -CaseTenantId. Split the output per tenant with Split-XdrMtoResult.ps1.
+
+    .NOTES
+        Tenant guard: every hunt must name its tenants; without -AllowMultiTenant it may name only
+        one; with -CaseTenantId it must name exactly that one. Any hunt row whose TenantId wasn't
+        named discards the whole result with exit code 7.
+
     .EXAMPLE
         pwsh -NoProfile -File tools/agent/Invoke-XdrAgent.ps1 -Command "Get-XdrTenantContext -Force"
 
@@ -84,7 +100,11 @@ param (
 
     [string]$SessionPath,
 
-    [double]$MaxSessionAgeHours = 12
+    [double]$MaxSessionAgeHours = 12,
+
+    [string]$CaseTenantId = $env:XDR_CASE_TENANT_ID,
+
+    [switch]$AllowMultiTenant
 )
 
 $ErrorActionPreference = 'Stop'
@@ -117,6 +137,15 @@ function Test-XdrAgentCommand {
         if ($name -match '^(Connect-Xdr(By|Auth)|Set-XdrConnectionSettings$|Update-XdrConnectionSettings$)') {
             $reasons += "$name changes the session. The user manages sign-in; ask them to reconnect and rerun Save-XdrAgentSession.ps1."
             continue
+        }
+        if ($name -eq 'Invoke-XdrMtoAdvancedHunting') {
+            # The cmdlet picks its target tenant(s) from the module cache when -TenantIds is absent.
+            # Make every hunt name its tenant. A splatted hashtable can't be inspected, so it passes.
+            $named = @($commandAst.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] -and $_.ParameterName.Length -ge 2 -and 'TenantIds'.StartsWith($_.ParameterName, 'OrdinalIgnoreCase') })
+            $splat = @($commandAst.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.VariableExpressionAst] -and $_.Splatted })
+            if (-not $named -and -not $splat) {
+                $reasons += "Invoke-XdrMtoAdvancedHunting needs -TenantIds naming the case tenant. Without it the target comes from the module cache."
+            }
         }
         if ($WriteAllowed) { continue }
 
@@ -193,6 +222,64 @@ if (Test-Path -LiteralPath $repoManifest) {
 }
 Set-XdrConnectionSettings -SccAuth $saved.SccAuth -Xsrf $saved.Xsrf -TenantId $saved.TenantId 6>$null
 
+# Case lock default: the tenant the standup recorded, unless this call is an explicit estate sweep.
+$caseFile = Join-Path $PSScriptRoot '../../.xdr-agent/case.json'
+if (-not $CaseTenantId -and -not $AllowMultiTenant -and (Test-Path -LiteralPath $caseFile)) {
+    try {
+        $case = Get-Content -LiteralPath $caseFile -Raw | ConvertFrom-Json
+        if ($case.CaseTenantId) { $CaseTenantId = $case.CaseTenantId }
+    } catch { Write-Stderr "[warning] Couldn't read $caseFile; no default case lock." }
+}
+if ($CaseTenantId) { Write-Stderr "[xdr-agent] Case lock: hunts limited to $CaseTenantId" }
+# When the case tenant is reached through MTO, every non-hunting cmdlet would answer for the
+# session's own tenant, which is a different customer. Allow only hunting and tenant metadata.
+if ($CaseTenantId -and $CaseTenantId -ne $saved.TenantId) {
+    $mtoSafe = '^(Invoke-XdrMtoAdvancedHunting|Get-XdrTenantContext|Get-XdrMtoTenantList|ConvertTo-XdrEncodedAdvancedHuntingQuery|Invoke-XdrHuntingQueryValidation)$'
+    $names = [System.Management.Automation.Language.Parser]::ParseInput($Command, [ref]$null, [ref]$null).FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() } | Where-Object { $_ -match '-Xdr' -and $_ -notmatch $mtoSafe } | Select-Object -Unique
+    if ($names) {
+        Write-Stderr "TENANT GUARD: the session belongs to $($saved.TenantName) ($($saved.TenantId)) but the case is $CaseTenantId. $($names -join ', ') would return $($saved.TenantName) data. Hunt the case tenant only, or switch tenant in the portal and rerun the standup for it."
+        exit 7
+    }
+}
+elseif ($AllowMultiTenant) { Write-Stderr "[xdr-agent] Multi-tenant sweep allowed for this call" }
+
+# Tenant guard. A proxy shadows Invoke-XdrMtoAdvancedHunting for everything this process runs
+# (including scripts it calls, such as a case's xdr_hunt.ps1) and checks -TenantIds at run time,
+# which also covers splatted calls the static check can't read.
+if ($CaseTenantId -and $AllowMultiTenant) {
+    Write-Stderr "TENANT GUARD: -CaseTenantId and -AllowMultiTenant can't be combined. A case hunts one tenant; an estate sweep names its tenants with -AllowMultiTenant and no case lock."
+    exit 7
+}
+$global:XdrHuntTenants = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+function Assert-XdrHuntTenants {
+    param ($Bound)
+    $ids = @($Bound['TenantIds'] | Where-Object { $_ } | ForEach-Object { "$_".Trim() } | Select-Object -Unique)
+    if (-not $ids) { throw "TENANT GUARD: Invoke-XdrMtoAdvancedHunting needs -TenantIds. Without it the module may fan out to every tenant in its cached MTO list." }
+    if ($CaseTenantId) {
+        $other = @($ids | Where-Object { $_ -ne $CaseTenantId })
+        if ($other) { throw "TENANT GUARD: this call is locked to case tenant $CaseTenantId, but the hunt names $($other -join ', '). Use that customer's own case, or an estate sweep without -CaseTenantId." }
+    } elseif ($ids.Count -gt 1 -and -not $AllowMultiTenant) {
+        throw "TENANT GUARD: the hunt names $($ids.Count) tenants. Multi-tenant hunts need -AllowMultiTenant, used only for an estate sweep the user asked for."
+    }
+    foreach ($id in $ids) { $null = $global:XdrHuntTenants.Add($id) }
+}
+$global:XdrHuntCmd = Get-Command -Module XDRInternals -Name Invoke-XdrMtoAdvancedHunting -CommandType Function
+$huntMeta = [System.Management.Automation.CommandMetadata]::new($global:XdrHuntCmd)
+$huntProxy = [System.Management.Automation.ProxyCommand]::Create($huntMeta)
+$huntProxy = $huntProxy -replace '\$ExecutionContext\.InvokeCommand\.GetCommand\(''Invoke-XdrMtoAdvancedHunting'',[^)]*\)', '$global:XdrHuntCmd'
+$huntProxy = $huntProxy -replace '(?m)^begin\s*\r?\n\{', "begin`n{`n    Assert-XdrHuntTenants -Bound `$PSBoundParameters"
+if ($huntProxy -notmatch 'Assert-XdrHuntTenants' -or $huntProxy -notmatch 'global:XdrHuntCmd') {
+    Write-Stderr 'TENANT GUARD: could not build the hunting proxy. Refusing to run.'
+    exit 7
+}
+# Guard state is global because scripts the command calls (xdr_hunt.ps1) resolve $script: to their
+# own scope; each wrapper call is its own process, so nothing carries over.
+# Defined per run in a child scope (below). Import-Module put the real function in this script's
+# scope, so redefining it here would overwrite it and the proxy would call itself.
+$global:XdrHuntProxy = [scriptblock]::Create($huntProxy)
+$tenantLeak = @()
+$notSearched = @()
+
 # Run the command, keeping only real output on stdout
 $results = New-Object System.Collections.Generic.List[object]
 $exitCode = 0
@@ -200,15 +287,26 @@ $exitCode = 0
 $ErrorActionPreference = 'Continue'
 try {
     $scriptBlock = [scriptblock]::Create($Command)
-    foreach ($item in (& $scriptBlock 2>&1 3>&1 6>&1)) {
+    $runner = { Set-Item -Path Function:local:Invoke-XdrMtoAdvancedHunting -Value $global:XdrHuntProxy; & $scriptBlock }
+    foreach ($item in (& $runner 2>&1 3>&1 6>&1)) {
         if ($item -is [System.Management.Automation.InformationRecord]) {
             Write-Stderr "[info] $($item.MessageData)"
         } elseif ($item -is [System.Management.Automation.WarningRecord]) {
             Write-Stderr "[warning] $($item.Message)"
+            # A tenant that errored in a hunt returned nothing: that is not the same as clean.
+            if ($item.Message -match '^Tenant (?<t>[0-9a-fA-F-]{36}) returned error: (?<e>.+)$') {
+                Write-Stderr "TENANT NOT SEARCHED: $($Matches.t) ($($Matches.e)). Report it as not searched, not as no results."
+                $notSearched += [pscustomobject]@{ TenantId = $Matches.t; Error = $Matches.e }
+                if ($exitCode -eq 0) { $exitCode = 2 }
+            }
         } elseif ($item -is [System.Management.Automation.ErrorRecord]) {
             Write-Stderr "[error] $item"
             $exitCode = 2
         } else {
+            # A hunt row carries TenantId and TenantName. Refuse any row from a tenant no hunt named.
+            if ($global:XdrHuntTenants.Count -and $item -isnot [string] -and $item.PSObject.Properties['TenantId'] -and $item.PSObject.Properties['TenantName'] -and -not $global:XdrHuntTenants.Contains("$($item.TenantId)")) {
+                $tenantLeak += "$($item.TenantName) ($($item.TenantId))"
+            }
             $results.Add($item)
         }
     }
@@ -218,7 +316,13 @@ try {
     if ($message -match '401|403|Unauthorized|Forbidden|login\.microsoftonline|sign in') {
         Write-Stderr "The portal session looks expired or lacks permission. Ask the user to reconnect and rerun Save-XdrAgentSession.ps1."
     }
-    $exitCode = 1
+    $exitCode = if ($message -match 'TENANT GUARD') { 7 } else { 1 }
+}
+
+if ($tenantLeak) {
+    Write-Stderr "TENANT GUARD: rows came back from tenants no hunt named: $(($tenantLeak | Select-Object -Unique) -join ', '). All results discarded."
+    $results.Clear()
+    $exitCode = 7
 }
 
 # The portal rotates XSRF tokens; keep the saved copy current for the next call.
@@ -229,13 +333,26 @@ if ($currentXsrf -and $currentXsrf -ne $saved.Xsrf) {
     $saved | ConvertTo-Json | Set-Content -LiteralPath $SessionPath -Encoding utf8
 }
 
-# Emit results
+# Emit results. Use ToArray(): in PowerShell 7.4, @() around a generic List breaks ConvertTo-Json
+# ("Argument types do not match").
+try {
 if ($OutFile) {
     $directory = Split-Path -Parent $OutFile
     if ($directory -and -not (Test-Path -LiteralPath $directory)) {
         $null = New-Item -ItemType Directory -Path $directory -Force
     }
-    ConvertTo-Json -InputObject @($results) -Depth $Depth -WarningAction SilentlyContinue | Set-Content -LiteralPath $OutFile -Encoding utf8
+    ConvertTo-Json -InputObject $results.ToArray() -Depth $Depth -WarningAction SilentlyContinue | Set-Content -LiteralPath $OutFile -Encoding utf8
+    if ($global:XdrHuntTenants.Count) {
+        # Sidecar: which tenants the hunt named, which returned rows, and which weren't searched.
+        $returned = @($results | Where-Object { $_ -isnot [string] -and $_.PSObject.Properties['TenantId'] } | ForEach-Object { "$($_.TenantId)" } | Select-Object -Unique)
+        [ordered]@{
+            Named       = @($global:XdrHuntTenants)
+            Returned    = $returned
+            NotSearched = @($notSearched)
+            CaseTenant  = $CaseTenantId
+            RunUtc      = (Get-Date).ToUniversalTime().ToString('o')
+        } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$OutFile.tenants.json" -Encoding utf8
+    }
     $properties = if ($results.Count -gt 0 -and $results[0] -isnot [string] -and -not $results[0].GetType().IsPrimitive) { @($results[0].PSObject.Properties.Name) } else { @() }
     [ordered]@{
         Count      = $results.Count
@@ -249,10 +366,14 @@ if ($OutFile) {
         $shown = $results.GetRange(0, $MaxItems)
     }
     switch ($Format) {
-        'Json' { ConvertTo-Json -InputObject @($shown) -Depth $Depth -WarningAction SilentlyContinue }
+        'Json' { ConvertTo-Json -InputObject $shown.ToArray() -Depth $Depth -WarningAction SilentlyContinue }
         'Table' { $shown | Format-Table -AutoSize | Out-String -Width 400 }
         'List' { $shown | Format-List | Out-String -Width 400 }
     }
+}
+} catch {
+    Write-Stderr "[error] Could not write the results: $($_.Exception.Message)"
+    exit 1
 }
 
 exit $exitCode

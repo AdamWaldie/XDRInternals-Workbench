@@ -56,6 +56,12 @@ if ($Clear) {
     return
 }
 
+# The file holds a live portal token. Refuse any location git would track.
+. (Join-Path $PSScriptRoot 'XdrWorkbench.Common.ps1')
+if ((Test-XdrPathGitIgnored -Path $Path) -eq $false) {
+    throw "Refusing to save the session to $Path because git would track it. Add its folder to .gitignore, or save with -InRepo (<repo>/.xdr-agent is ignored) or to the default ~/.xdr-agent."
+}
+
 $module = Get-Module XDRInternals
 if (-not $module) {
     throw "XDRInternals isn't loaded in this session. Connect with a Connect-Xdr* cmdlet first, then run this script in the same session."
