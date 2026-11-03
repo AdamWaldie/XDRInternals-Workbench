@@ -1,0 +1,5 @@
+// 12 - Source IPs logged alongside injection attempts (direct Client_ip / Remote ip).
+Netscaler_CL | where TimeGenerated > ago(45d)
+| where CitrixAdcMessage_s contains "NSPPE" and CitrixAdcMessage_s has_any ("Remote ip","Client_ip","ClientIP","Context")
+| extend IP=coalesce(extract(@"Remote ip = ([\d\.]+)",1,CitrixAdcMessage_s), extract(@"Client_ip ([\d\.]+)",1,CitrixAdcMessage_s), extract(@"@([\d\.]+) ",1,CitrixAdcMessage_s))
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated) by CitrixAdcHostname_s, IP

@@ -1,0 +1,124 @@
+﻿param (
+	$TestGeneral = $true,
+	
+	$TestFunctions = $true,
+
+	[string[]]$ExcludeTag = @(),
+	
+	[ValidateSet('None', 'Normal', 'Detailed', 'Diagnostic')]
+	[Alias('Show')]
+	$Output = "None",
+	
+	[string[]]$Include = @("*"),
+	
+	[string[]]$Exclude = @()
+)
+
+Write-Host "Starting Tests"
+
+Write-Host "Importing Module"
+
+$global:testroot = $PSScriptRoot
+$global:__pester_data = @{ }
+
+Remove-Module XDRInternals -ErrorAction Ignore
+Import-Module "$PSScriptRoot\..\XDRInternals\XDRInternals.psd1"
+Import-Module "$PSScriptRoot\..\XDRInternals\XDRInternals.psm1" -Force
+
+# Need to import explicitly so we can use the configuration class
+Import-Module Pester
+
+Write-Host  "Creating test result folder"
+$null = New-Item -Path "$PSScriptRoot\.." -Name TestResults -ItemType Directory -Force
+
+$totalFailed = 0
+$totalRun = 0
+
+$testresults = @()
+$config = [PesterConfiguration]::Default
+$config.TestResult.Enabled = $true
+if (@($ExcludeTag).Count -gt 0) {
+	$config.Filter.ExcludeTag = @($ExcludeTag)
+}
+
+#region Run General Tests
+if ($TestGeneral)
+{
+	Write-Host  "Modules imported, proceeding with general tests"
+	foreach ($testDirectory in @('general', 'build'))
+	{
+		$testPath = Join-Path $PSScriptRoot $testDirectory
+		if (-not (Test-Path $testPath)) { continue }
+
+		foreach ($file in (Get-ChildItem $testPath -File | Where-Object Name -like "*.Tests.ps1"))
+		{
+			if (-not (@($Include) | Where-Object { $file.Name -like $_ })) { continue }
+			if (@($Exclude) | Where-Object { $file.Name -like $_ }) { continue }
+
+			Write-Host  "  Executing $($file.Name)"
+			$config.TestResult.OutputPath = Join-Path "$PSScriptRoot\..\TestResults" "TEST-$($file.BaseName).xml"
+			$config.Run.Path = $file.FullName
+			$config.Run.PassThru = $true
+			$config.Output.Verbosity = $Output
+			$results = Invoke-Pester -Configuration $config
+			foreach ($result in $results)
+			{
+				$totalRun += $result.TotalCount
+				$totalFailed += $result.FailedCount
+				$result.Tests | Where-Object Result -ne 'Passed' | ForEach-Object {
+					$testresults += [pscustomobject]@{
+						Block    = $_.Block
+						Name	 = "It $($_.Name)"
+						Result   = $_.Result
+						Message  = $_.ErrorRecord.DisplayErrorMessage
+					}
+				}
+			}
+		}
+	}
+}
+#endregion Run General Tests
+
+$global:__pester_data.ScriptAnalyzer | Out-Host
+
+#region Test Commands
+if ($TestFunctions)
+{
+	Write-Host "Proceeding with individual tests"
+	foreach ($file in (Get-ChildItem "$PSScriptRoot\functions" -Recurse -File | Where-Object Name -like "*Tests.ps1"))
+	{
+		if (-not (@($Include) | Where-Object { $file.Name -like $_ })) { continue }
+		if (@($Exclude) | Where-Object { $file.Name -like $_ }) { continue }
+		
+		Write-Host "  Executing $($file.Name)"
+		$config.TestResult.OutputPath = Join-Path "$PSScriptRoot\..\TestResults" "TEST-$($file.BaseName).xml"
+		$config.Run.Path = $file.FullName
+		$config.Run.PassThru = $true
+		$config.Output.Verbosity = $Output
+    	$results = Invoke-Pester -Configuration $config
+		foreach ($result in $results)
+		{
+			$totalRun += $result.TotalCount
+			$totalFailed += $result.FailedCount
+			$result.Tests | Where-Object Result -ne 'Passed' | ForEach-Object {
+				$testresults += [pscustomobject]@{
+					Block    = $_.Block
+					Name	 = "It $($_.Name)"
+					Result   = $_.Result
+					Message  = $_.ErrorRecord.DisplayErrorMessage
+				}
+			}
+		}
+	}
+}
+#endregion Test Commands
+
+$testresults | Sort-Object Describe, Context, Name, Result, Message | Format-List
+
+if ($totalFailed -eq 0) { Write-Host  "All $totalRun tests executed without a single failure!" }
+else { Write-Host "$totalFailed tests out of $totalRun tests failed!" }
+
+if ($totalFailed -gt 0)
+{
+	throw "$totalFailed / $totalRun tests failed!"
+}

@@ -1,0 +1,11 @@
+// 19 - VPN logins after the first attack from user/IP pairs not seen before.
+// VPN logins after first attack (10-03) by user/IP never seen in the 30 days before
+let cutoff = datetime(2026-10-03T02:50:00Z);
+let ev = Netscaler_CL | where TimeGenerated > ago(45d) | where CitrixAdcEventType_s in ("LOGIN","LOGOUT")
+ | extend User=extract(@"User (\S+)",1,CitrixAdcMessage_s), IP=extract(@"Client_ip (\S+)",1,CitrixAdcMessage_s);
+let base = ev | where TimeGenerated < cutoff | summarize by User, IP;
+ev | where TimeGenerated >= cutoff and CitrixAdcEventType_s=="LOGIN"
+| join kind=leftanti base on User, IP
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated), hosts=make_set(CitrixAdcHostname_s) by User, IP
+| join kind=leftouter (ev | where TimeGenerated < cutoff | summarize prevIPs=dcount(IP) by User) on User
+| project FirstSeen, LastSeen, User, IP, n, hosts, NewUser=isempty(prevIPs) | order by FirstSeen asc

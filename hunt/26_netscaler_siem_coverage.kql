@@ -1,0 +1,4 @@
+// 26 - Which NetScaler nodes send to the SIEM, and since when.
+Netscaler_CL | where TimeGenerated > ago(45d)
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated) by CitrixAdcHostname_s, host_ip_s, bin(TimeGenerated, 1d)
+| summarize days=count(), FirstSeen=min(FirstSeen), LastSeen=max(LastSeen), total=sum(n), gaps=make_list_if(format_datetime(TimeGenerated,"MM-dd"), n < 1000) by CitrixAdcHostname_s, host_ip_s

@@ -1,0 +1,35 @@
+{
+  "name": "XDRInternals",
+
+  // Reuses the project's real compose file rather than a parallel definition, so
+  // the egress firewall, NET_ADMIN/NET_RAW caps, the relay port and the
+  // claude-home volume all behave exactly as they do outside VS Code. The second
+  // file adds the live repo bind mount and the VS Code egress allowance.
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "docker-compose.devcontainer.yml"
+  ],
+  "service": "xdrinternals",
+  "workspaceFolder": "/workspace",
+
+  // Keep the image's own CMD (pwsh -NoExit), which is what holds the container
+  // open, and let the entrypoint bring up the firewall before VS Code attaches.
+  "overrideCommand": false,
+  "remoteUser": "root",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.powershell",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "pwsh",
+        "terminal.integrated.profiles.linux": {
+          "pwsh": { "path": "/usr/bin/pwsh" },
+          "bash": { "path": "/bin/bash" }
+        }
+      }
+    }
+  }
+}

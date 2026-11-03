@@ -1,0 +1,16 @@
+// 34 - Which NetScaler nodes are reporting into Netscaler_CL, and how recently.
+// Run in SecurityAuditLogAnalyticsTest.
+Netscaler_CL
+| where TimeGenerated > ago(30d)
+| summarize
+    Events = count(),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated),
+    Last24h = countif(TimeGenerated > ago(24h))
+    by Node = CitrixAdcHostname_s, NodeIP = host_ip_s
+| extend MinutesSinceLast = datetime_diff("minute", now(), LastSeen)
+| extend Status = case(
+    MinutesSinceLast <= 15, "Reporting",
+    MinutesSinceLast <= 1440, "Delayed",
+    "Silent")
+| order by Node asc

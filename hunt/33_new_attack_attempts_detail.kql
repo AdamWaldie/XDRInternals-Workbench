@@ -1,0 +1,81 @@
+// 33 - Full event-level detail for new attack attempts on any NetScaler node.
+// Run in SecurityAuditLogAnalyticsTest. Short lines so it survives copy/paste.
+let lookback = 24h;
+let iocIps = dynamic([
+  "213.209.159.55","81.94.239.8","45.137.99.92",
+  "162.33.177.119","167.88.172.6","5.83.144.60",
+  "23.234.80.205","54.194.246.240","79.133.42.141",
+  "68.235.46.82","23.234.88.25","146.70.211.157",
+  "138.199.60.36","37.19.221.148","23.234.94.126",
+  "23.162.8.173","138.199.60.22","104.36.50.29",
+  "139.59.210.64","103.214.20.54","146.70.199.170",
+  "146.70.143.142","109.136.126.142"]);
+let samlIocs = dynamic(["idp.test.local",
+  "02558a7ac3d8c9c4e9ed3b3569cbf51b"]);
+let stagerIocs = dynamic(["q8k1vi","vadmv1","e6ee7c85",
+  "M88npieBFw","uxdport","uxdlock"]);
+Netscaler_CL
+| where TimeGenerated > ago(lookback)
+| extend M = CitrixAdcMessage_s
+| extend
+    IsInjection = CitrixAdcModule_s in ("AAA","AAATM","SSLVPN")
+        and CitrixAdcEventType_s != "HTTPREQUEST"
+        and (M contains "NSPPE;" or M contains "${IFS}"
+             or M contains "$(" or M has_any ("wget","curl","fetch")),
+    IsCrash = CitrixAdcModule_s startswith "PITBOSS"
+        and M has_any ("nsaaad","NSPPE")
+        and M has_any ("died","system failure","maximum number",
+                       "core","orphan"),
+    IsSaml = M has_any (samlIocs) or M contains "M0M0M0M0",
+    IsStager = M has_any (stagerIocs)
+        or M contains "LogonPoint/a" or M contains ".slap."
+        or M contains "x.php",
+    IsIocIp = Message has_any (iocIps)
+        or Message contains "194.127.166.",
+    IsDtls = CitrixAdcEventType_s == "SSL_HANDSHAKE_FAILURE"
+        and M has "DTLS"
+| extend Category = case(
+    IsInjection, "1 Username command injection",
+    IsCrash,     "2 nsaaad or packet-engine crash",
+    IsSaml,      "3 Forged SAML CVE-2026-88779",
+    IsStager,    "4 Stager or web-shell strings",
+    IsIocIp,     "5 Known attacker IP",
+    IsDtls,      "6 DTLS failure CVE-2026-88772",
+    "")
+| where isnotempty(Category)
+| extend
+    SrcIP = extract(
+        @"(?:ClientIP|Client_ip|Source|Remote ip =) ((?:\d+\.){3}\d+)",
+        1, M),
+    SrcPort = extract(
+        @"(?:ClientPort |Source (?:\d+\.){3}\d+:)(\d+)", 1, M),
+    TargetIP = coalesce(
+        extract(@"VserverServiceIP ((?:\d+\.){3}\d+)", 1, M),
+        extract(@"(?:Vserver|Destination) ((?:\d+\.){3}\d+)", 1, M)),
+    TargetPort = coalesce(
+        extract(@"VserverServicePort (\d+)", 1, M),
+        extract(@"(?:Vserver|Destination) (?:\d+\.){3}\d+:(\d+)", 1, M)),
+    Username = coalesce(
+        extract(@"username: <(.*?)>, pwdlen", 1, M),
+        extract(@"user: <(.*?)>, factor", 1, M),
+        extract(@"User (.*?) - Client_ip", 1, M),
+        extract(@"aaad for <(.*?)>, factor", 1, M)),
+    Factor = extract(@"factor:? <([^>]*)>", 1, M),
+    FailReason = extract(@'Failure_reason "([^"]*)"', 1, M),
+    BytesSent = toint(extract(@"Total_bytes_send (\d+)", 1, M)),
+    BytesRecv = toint(extract(@"Total_bytes_recv (\d+)", 1, M)),
+    TLS = extract(@"ClientVersion (\S+)", 1, M)
+| extend InjectedCommand = iff(IsInjection,
+    trim(@"\s", replace_string(
+        extract(@"NSPPE;(.*?);#", 1, Username), "${IFS}", " ")),
+    "")
+| project TimeGenerated, Category,
+    Node = CitrixAdcHostname_s, NodeIP = host_ip_s,
+    PacketEngine = CitrixAdcPacketEngine_s,
+    Module = CitrixAdcModule_s, EventType = CitrixAdcEventType_s,
+    EventId = CitrixAdcEventId_s,
+    SrcIP, SrcPort, TargetIP, TargetPort, TLS,
+    Username, InjectedCommand, Factor, FailReason,
+    BytesSent, BytesRecv,
+    FullMessage = M, RawEvent = event_original_s
+| order by TimeGenerated asc

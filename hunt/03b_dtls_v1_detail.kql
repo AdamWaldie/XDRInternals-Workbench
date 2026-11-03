@@ -1,0 +1,4 @@
+// 03b - Raw DTLSv1.0 handshake failures (DTLS exploitation precursor to NSPPE crash). Result 2026-10-07 ASOS: none.
+Netscaler_CL | where TimeGenerated > ago(45d)
+| where CitrixAdcEventType_s == "SSL_HANDSHAKE_FAILURE" and CitrixAdcMessage_s has "DTLSv1.0"
+| project TimeGenerated, CitrixAdcHostname_s, CitrixAdcPacketEngine_s, CitrixAdcMessage_s | order by TimeGenerated asc | take 300

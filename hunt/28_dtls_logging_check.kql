@@ -1,0 +1,4 @@
+// 28 - Is DTLS logged at all? Daily DTLS handshake counts. (Empty for ASOS: DTLS is not in the syslog feed.)
+// Is DTLS logged at all? Daily DTLS handshake counts by result
+Netscaler_CL | where TimeGenerated > ago(45d) | where CitrixAdcModule_s=="SSLLOG" and CitrixAdcMessage_s has "DTLS"
+| summarize n=count() by CitrixAdcHostname_s, CitrixAdcEventType_s, V=extract(@"ClientVersion (\S+)",1,CitrixAdcMessage_s), Day=bin(TimeGenerated,1d) | order by Day asc

@@ -1,0 +1,5 @@
+// 17 - nsaaad response to injection attempts vs normal logins. Identical resp/flags = treated as an ordinary bad login.
+// How nsaaad answered injection attempts vs normal logins
+Netscaler_CL | where TimeGenerated > ago(45d) | where CitrixAdcModule_s=="AAATM" and CitrixAdcMessage_s has "AAAD RESP"
+| extend Inj = CitrixAdcMessage_s contains "NSPPE", Resp=extract(@"aaad-resp (\d+)",1,CitrixAdcMessage_s), Flags=extract(@"aaad-flags (\d+)",1,CitrixAdcMessage_s), Factor=extract(@"factor: <([^>]*)>",1,CitrixAdcMessage_s)
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated) by Inj, Resp, Flags, Factor, CitrixAdcHostname_s | order by Inj desc, n desc

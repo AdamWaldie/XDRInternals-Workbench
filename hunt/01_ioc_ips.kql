@@ -1,0 +1,4 @@
+// 01 - WHIPSHOT campaign IOC IPs (GTIG/Mandiant, medium confidence). Result 2026-10-07 ASOS: no hits.
+Netscaler_CL | where TimeGenerated > ago(45d)
+| where Message has_any ("143.198.7.94","157.254.167.12")
+| project TimeGenerated, CitrixAdcHostname_s, CitrixAdcModule_s, CitrixAdcEventType_s, CitrixAdcMessage_s | take 200

@@ -1,0 +1,7 @@
+// 29 - Per-node logging gaps in Netscaler_CL over full retention (start, gaps > 1 day, resume dates). Run with --timespan P366D.
+Netscaler_CL | where TimeGenerated > ago(365d)
+| summarize n=count() by CitrixAdcHostname_s, Day=bin(TimeGenerated,1d)
+| order by CitrixAdcHostname_s asc, Day asc
+| extend prev=prev(Day), prevH=prev(CitrixAdcHostname_s)
+| where prevH != CitrixAdcHostname_s or Day - prev > 1d
+| project CitrixAdcHostname_s, ResumedOn=Day, LastDayBeforeGap=iff(prevH==CitrixAdcHostname_s, prev, datetime(null)), GapDays=iff(prevH==CitrixAdcHostname_s, (Day-prev)/1d - 1, real(null))

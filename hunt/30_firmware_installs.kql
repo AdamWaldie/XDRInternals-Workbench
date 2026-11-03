@@ -1,0 +1,5 @@
+// 30 - Firmware install commands per node (build history from CMD_EXECUTED). Only covers nodes and periods that were logging.
+Netscaler_CL | where TimeGenerated > ago(365d) | where CitrixAdcEventType_s=="CMD_EXECUTED" and CitrixAdcMessage_s has "install"
+| extend Cmd=extract(@'Command "(.*?)" - Status',1,CitrixAdcMessage_s), Status=extract(@'Status "([^"]*)',1,CitrixAdcMessage_s), IP=extract(@"Remote_ip (\S+)",1,CitrixAdcMessage_s)
+| where Cmd has "nsinstall" or Cmd has "build"
+| summarize FirstSeen=min(TimeGenerated) by CitrixAdcHostname_s, Cmd=substring(Cmd,0,110), Status=substring(Status,0,40), IP | order by FirstSeen asc

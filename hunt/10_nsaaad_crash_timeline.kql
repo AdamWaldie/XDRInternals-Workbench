@@ -1,0 +1,4 @@
+// 10 - nsaaad crash / pitboss system-failure timeline in 15m bins (correlate with 09).
+Netscaler_CL | where TimeGenerated > ago(45d)
+| where CitrixAdcModule_s startswith "PITBOSS" and CitrixAdcMessage_s has_any ("died","system failure","maximum number","core")
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated) by CitrixAdcHostname_s, bin(TimeGenerated,15m) | order by TimeGenerated asc

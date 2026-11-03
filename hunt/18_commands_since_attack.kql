@@ -1,0 +1,6 @@
+// 18 - Appliance-local (127.0.0.1) and shell commands since the first attack (2026-10-03).
+Netscaler_CL | where TimeGenerated > datetime(2026-10-03T00:00:00Z)
+| where CitrixAdcEventType_s == "CMD_EXECUTED" and CitrixAdcModule_s in ("CLI","API","GUI")
+| extend User=extract(@"User (\S+)",1,CitrixAdcMessage_s), IP=extract(@"Remote_ip (\S+)",1,CitrixAdcMessage_s), Cmd=extract(@'Command "([^"]*)',1,CitrixAdcMessage_s), Status=extract(@'Status "([^"]*)',1,CitrixAdcMessage_s)
+| where IP == "127.0.0.1" or Cmd startswith "shell" or Cmd has_any ("LogonPoint","nsconfig","/tmp","/var/tmp","rm ","find ","ls ","cat ","grep","ps ","sockstat","netstat","kill","chmod","/bin/sh","httpd")
+| project TimeGenerated, CitrixAdcHostname_s, CitrixAdcModule_s, User, IP, Cmd=substring(Cmd,0,200), Status=substring(Status,0,60) | order by TimeGenerated asc

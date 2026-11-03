@@ -1,0 +1,7 @@
+// 00 - Discovery: which workspaces hold NetScaler logs (CEF, Syslog, NetScaler_CL/Netscaler_CL). Run against every workspace.
+union isfuzzy=true
+ (CommonSecurityLog | where TimeGenerated > ago(30d) | where DeviceVendor has "Citrix" or DeviceProduct has "NetScaler" | summarize n=count(), LastSeen=max(TimeGenerated) by Src="CEF", Key=strcat(DeviceVendor,"/",DeviceProduct), Host=tostring(DeviceName)),
+ (Syslog | where TimeGenerated > ago(30d) | where SyslogMessage has_any ("SSLVPN","PPE-0","SSL_HANDSHAKE_FAILURE","NSPPE","AAATM","CONN_DELINK","SSLLOG") or ProcessName has_any ("nsppe","pitboss") | summarize n=count(), LastSeen=max(TimeGenerated) by Src="Syslog", Key=ProcessName, Host=HostName),
+ (NetScaler_CL | where TimeGenerated > ago(30d) | summarize n=count(), LastSeen=max(TimeGenerated) by Src="NetScaler_CL", Key="", Host=""),
+ (Netscaler_CL | where TimeGenerated > ago(30d) | summarize n=count(), LastSeen=max(TimeGenerated) by Src="Netscaler_CL", Key="", Host="")
+| top 50 by n

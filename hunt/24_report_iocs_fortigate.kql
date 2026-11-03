@@ -1,0 +1,6 @@
+// 24 - ASOS FortiGate: any traffic to or from the report IOC IPs (exfil 81.94.239.8:8877, stage-2 213.209.159.55:80/443/8081, 45.137.99.92:8080). Does NOT see the NetScaler management IPs (.150/.151).
+let ips = dynamic(["213.209.159.55","81.94.239.8","45.137.99.92","162.33.177.119","167.88.172.6","5.83.144.60","23.234.80.205","54.194.246.240","79.133.42.141","68.235.46.82","23.234.88.25","23.234.94.126","146.70.211.157","138.199.60.36","37.19.221.148"]);
+CommonSecurityLog | where TimeGenerated > ago(45d) | where DeviceVendor=="Fortinet"
+| where SourceIP in (ips) or DestinationIP in (ips) or ipv4_is_in_range(SourceIP,"194.127.166.0/24") or ipv4_is_in_range(DestinationIP,"194.127.166.0/24")
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated), acts=make_set(DeviceAction,5), sent=sum(SentBytes), rcvd=sum(ReceivedBytes) by SourceIP, DestinationIP, DestinationPort, Protocol
+| order by FirstSeen asc

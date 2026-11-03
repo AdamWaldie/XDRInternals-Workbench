@@ -1,0 +1,7 @@
+// 05 - All CMD_EXECUTED (CLI/GUI/UI/API) normalised, rarest first. Look for shell, cp/tar into VPN plugin dirs, chmod, httpd.conf.
+Netscaler_CL | where TimeGenerated > ago(45d)
+| where CitrixAdcEventType_s == "CMD_EXECUTED"
+| extend User=extract(@"User (\S+)",1,CitrixAdcMessage_s), Remote=extract(@"Remote_ip (\S+)",1,CitrixAdcMessage_s), Cmd=extract(@'Command "([^"]*)',1,CitrixAdcMessage_s), Status=extract(@'Status "([^"]*)',1,CitrixAdcMessage_s)
+| extend CmdNorm=substring(replace_regex(Cmd,@"\d+","N"),0,120)
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated), users=make_set(User,10), srcs=make_set(Remote,10) by CitrixAdcModule_s, CmdNorm
+| order by n asc

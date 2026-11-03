@@ -1,0 +1,10 @@
+// 27 - Reboot / pitboss crash markers with SSL/DTLS failures in the hour before (CVE-2026-88772 correlation).
+// Reboot/crash markers and any DTLS / SSL failure activity in the 60 min before each, since 23 Aug
+let marks = Netscaler_CL | where TimeGenerated > ago(45d)
+ | where CitrixAdcEventType_s in ("NICPOWERON") or (CitrixAdcModule_s startswith "PITBOSS" and CitrixAdcMessage_s has_any ("system failure","NSPPE","orphan","died","restarting the nCore"))
+ | summarize Markers=make_set(substring(replace_regex(CitrixAdcMessage_s,@"\d+","N"),0,90),6), mcount=count() by H=CitrixAdcHostname_s, Hour=bin(TimeGenerated,1h);
+let dtls = Netscaler_CL | where TimeGenerated > ago(45d)
+ | where CitrixAdcModule_s=="SSLLOG" and (CitrixAdcMessage_s has "DTLS" or CitrixAdcEventType_s=="SSL_HANDSHAKE_FAILURE")
+ | summarize dtlsAny=countif(CitrixAdcMessage_s has "DTLS"), dtlsFail=countif(CitrixAdcMessage_s has "DTLS" and CitrixAdcEventType_s=="SSL_HANDSHAKE_FAILURE"), internalErr=countif(CitrixAdcMessage_s has "Internal Error"), sslFail=countif(CitrixAdcEventType_s=="SSL_HANDSHAKE_FAILURE") by H=CitrixAdcHostname_s, Hour=bin(TimeGenerated,1h);
+marks | join kind=leftouter (dtls | project H, PrevHour=Hour+1h, dtlsAny, dtlsFail, internalErr, sslFail) on $left.H==$right.H, $left.Hour==$right.PrevHour
+| project Hour, H, mcount, Markers, dtlsAny_prevHr=dtlsAny, dtlsFail_prevHr=dtlsFail, internalErr_prevHr=internalErr, sslFail_prevHr=sslFail | order by Hour asc

@@ -1,0 +1,4 @@
+// 16 - Search a whole workspace for the injection IOCs (callback IPs, v5v.in, payload token).
+search in (*) "213.209.159.55" or "45.137.99.92" or "v5v.in" or "M88npieBFw"
+| where TimeGenerated > ago(45d)
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated) by $table

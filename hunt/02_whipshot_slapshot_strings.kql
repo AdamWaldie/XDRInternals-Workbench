@@ -1,0 +1,5 @@
+// 02 - WHIPSHOT/SLAPSHOT strings, httpd.conf handler changes, VPN plugin/theme paths. ("u+s" removed: false-positives in SAML base64.)
+Netscaler_CL | where TimeGenerated > ago(45d)
+| where Message has_any ("uxdport","uxdlock","UXD_IDLE_EXIT","fsockopen","e6ee7c85","AddHandler","SetHandler","php_flag","AliasMatch","x-httpd-php","HTTP_X_UX","X-UX")
+   or Message contains ".uxd" or Message contains "httpd.conf" or Message contains "/scripts/linux" or Message contains "/scripts/vista" or Message contains "/scripts/mac" or Message contains "/vpn/media" or Message contains "/vpn/theme" or Message contains "LogonPoint/custom"
+| project TimeGenerated, CitrixAdcHostname_s, CitrixAdcModule_s, CitrixAdcEventType_s, CitrixAdcMessage_s | take 300

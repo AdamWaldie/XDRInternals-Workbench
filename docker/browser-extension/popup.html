@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>XDR Docker Relay</title>
+<style>
+    body { font-family: system-ui, sans-serif; width: 300px; padding: 12px; color: #1a1a1a; }
+    h1 { font-size: 14px; margin: 0 0 8px; }
+    label { display: block; font-size: 12px; margin-top: 8px; color: #333; }
+    input { width: 100%; box-sizing: border-box; padding: 6px; margin-top: 2px; font-size: 13px; }
+    button { margin-top: 12px; width: 100%; padding: 8px; font-size: 13px; }
+    button:disabled { opacity: 0.6; }
+    p.status { font-size: 12px; min-height: 32px; margin: 8px 0 0; }
+    p.warn { font-size: 11px; color: #a33; margin-top: 8px; }
+</style>
+</head>
+<body>
+    <h1>XDR Docker Relay</h1>
+    <label for="code">Pairing code (from Connect-XdrByBrowserExtension)</label>
+    <input id="code" type="text" autocomplete="off" spellcheck="false">
+    <label for="port">Container relay port</label>
+    <input id="port" type="number" value="8787">
+    <button id="send">Relay session to container</button>
+    <p class="status" id="status"></p>
+    <p class="warn">
+        Sends your current Defender XDR sign-in cookie to 127.0.0.1 only, and only for one
+        use. Only paste in a pairing code you just generated yourself, for a container you
+        run and trust on this machine.
+    </p>
+    <p class="warn">
+        Sign in to security.microsoft.com in an <strong>Incognito window</strong>, with
+        "Allow in Incognito" enabled for this extension (see its Details page). A cookie
+        from your normal, already-signed-in profile is often rejected by Azure AD with
+        "session information is not sufficient for SSO". Once signed in there, this popup
+        can be opened from either window.
+    </p>
+    <script src="popup.js"></script>
+</body>
+</html>

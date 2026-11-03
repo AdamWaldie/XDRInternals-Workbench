@@ -1,0 +1,61 @@
+services:
+  xdrinternals:
+    build: .
+    image: xdrinternals:local
+    stdin_open: true
+    tty: true
+    # Required so init-firewall.sh can set up the iptables/ipset egress
+    # allowlist; without these the container refuses to start (fail-closed).
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    # Loopback-only: lets the XDR Docker Relay browser extension (running in
+    # your host Chrome) reach Connect-XdrByBrowserExtension's listener, while
+    # keeping it unreachable from the network. Change the port on both sides
+    # if you use Connect-XdrByBrowserExtension -Port.
+    ports:
+      - "127.0.0.1:8787:8787"
+    # List form (not a mapping) so the bare names below pass a host variable
+    # through only when it is actually set, rather than forcing it to "".
+    environment:
+      # Extra domains to allow (space separated), e.g. a specific
+      # Sentinel/Key Vault/ADX hostname if it isn't already covered by the
+      # module's known endpoints in docker/init-firewall.sh.
+      - XDR_ALLOWED_DOMAINS=
+      # Set to 0 to drop Anthropic's endpoints from the egress allowlist, which
+      # leaves the bundled Claude Code CLI unable to reach the API.
+      - XDR_ALLOW_CLAUDE_CODE=1
+      # Optional: skip Claude Code's interactive sign-in by exporting one of
+      # these on the host first. Without either, run `claude` in the container
+      # and complete the browser sign-in once - it persists on the volume below.
+      - ANTHROPIC_API_KEY
+      - CLAUDE_CODE_OAUTH_TOKEN
+      # Uncomment to stop Claude Code attempting optional telemetry and error
+      # reports that the egress firewall drops anyway. It also turns off
+      # feature-flag fetching, which disables some CLI features, so it is off
+      # by default.
+      # - DISABLE_TELEMETRY=1
+    volumes:
+      # Persists everything Claude Code keeps in root's home directory - the
+      # OAuth credentials from `claude` sign-in (.claude/.credentials.json),
+      # plus settings, session history and resumable transcripts - so the
+      # throwaway `docker compose run --rm` flow does not mean signing in
+      # again every time. PowerShell's PSReadLine history and `az login`
+      # tokens (~/.azure) ride along in the same volume.
+      #
+      # Safe to mount over /root because Claude Code, the module and the Azure
+      # CLI extensions are all installed system-wide, outside the home directory.
+      - claude-home:/root
+      # Uncomment to mount a local passkey/credential file so you can
+      # authenticate (e.g. Connect-XdrBySoftwarePasskey) without baking
+      # secrets into the image. Only works once that file actually exists.
+      #   - ./tests/live.settings.json:/workspace/tests/live.settings.json:ro
+      #
+      # Uncomment to let Claude Code edit the real repo instead of the snapshot
+      # baked in by `COPY . .` - without this, any change it makes to /workspace
+      # is discarded when the container exits. This also brings the .git
+      # directory in, which .dockerignore keeps out of the image.
+      #   - .:/workspace
+
+volumes:
+  claude-home:

@@ -1,0 +1,186 @@
+﻿Authentication failed against tenant 23ffaa85-ba95-4afe-83f8-bec1204ec961 'The Electoral Commission': AADSTS53003: Access has been blocked by Conditional Access policies. The access policy does not allow token issuance. Trace ID: a9a9ec76-b01c-4d3e-adf0-da7946a7c400 Correlation ID: 2bdc8bee-75ba-4792-ad7f-a77ed6ff32a5 Timestamp: 2026-10-07 12:41:04Z
+Authentication failed against tenant 30c0e8bd-1958-4011-bbba-1bef1c3abd51 'Carpenters Group': AADSTS50076: Due to a configuration change made by your administrator, or because you moved to a new location, you must use multi-factor authentication to access '797f4846-ba00-4fd7-ba43-dac1f8f63013'. Trace ID: a6a93900-6555-4b8b-b6a1-760cfba47300 Correlation ID: 3d5fbaaa-117e-43b5-b30a-2a02c5e0487c Timestamp: 2026-10-07 12:41:05Z
+Authentication failed against tenant 36326f6d-2a20-41ce-99e2-f06c56ced29a 'Argus Media': AADSTS50076: Due to a configuration change made by your administrator, or because you moved to a new location, you must use multi-factor authentication to access '797f4846-ba00-4fd7-ba43-dac1f8f63013'. Trace ID: 2affa061-9cca-4b2b-a0a2-b29805b3b100 Correlation ID: ed0cba52-7772-4fe3-8379-4350c142acb2 Timestamp: 2026-10-07 12:41:06Z
+Authentication failed against tenant 46f6cbc7-c844-4175-90c4-dd0f275853f1 'Ocean Technologies Group': AADSTS500571: The guest user account is disabled. Trace ID: e270ff7b-35d5-4e93-a3d2-09713a2c3200 Correlation ID: 869f431d-a49f-41af-863e-9ceba215263c Timestamp: 2026-10-07 12:41:06Z
+Authentication failed against tenant 71f4f5a1-3263-48ad-8ea4-0981a6fe99f4 'Morgan Sindall Group plc': AADSTS50076: Due to a configuration change made by your administrator, or because you moved to a new location, you must use multi-factor authentication to access '797f4846-ba00-4fd7-ba43-dac1f8f63013'. Trace ID: 44cadb0b-7510-48b0-a2f2-7110b4575d00 Correlation ID: 0a277543-0cae-4237-ab67-d4927ebdfff7 Timestamp: 2026-10-07 12:41:07Z
+Authentication failed against tenant 90578e2d-fce8-4c57-a1a6-2b4909a9dc4d 'Hargreaves Lansdown': AADSTS50076: Due to a configuration change made by your administrator, or because you moved to a new location, you must use multi-factor authentication to access '797f4846-ba00-4fd7-ba43-dac1f8f63013'. Trace ID: 96a3e7a0-f477-4fe7-9b19-927cac686f00 Correlation ID: fbce82f3-370a-4856-8ac2-dfb6f67d06e3 Timestamp: 2026-10-07 12:41:08Z
+Authentication failed against tenant ce37246c-a47b-4e72-ac75-1f10b15a9379 'Croda': AADSTS50076: Due to a configuration change made by your administrator, or because you moved to a new location, you must use multi-factor authentication to access '797f4846-ba00-4fd7-ba43-dac1f8f63013'. Trace ID: 8f5a7690-04f6-4635-a132-2e9a4bb82b00 Correlation ID: 03fb1715-01b2-4a55-a499-668825949c10 Timestamp: 2026-10-07 12:41:08Z
+Authentication failed against tenant f2fe6bd3-9c4a-485b-ae69-e18820a88130 'ERM': AADSTS50076: Due to a configuration change made by your administrator, or because you moved to a new location, you must use multi-factor authentication to access '797f4846-ba00-4fd7-ba43-dac1f8f63013'. Trace ID: 1570ac61-2910-43f9-b8f9-f3a1fa320700 Correlation ID: bae2f890-57bd-4956-a462-64ccdfa0a5d8 Timestamp: 2026-10-07 12:41:09Z
+Authentication failed against tenant f4fd83f8-cc5f-4fc6-bf63-41c416a63bcd 'Currys': AADSTS50076: Due to a configuration change made by your administrator, or because you moved to a new location, you must use multi-factor authentication to access '797f4846-ba00-4fd7-ba43-dac1f8f63013'. Trace ID: b5d02eeb-2e27-4c99-b5f7-852a0bf53500 Correlation ID: 3eea429a-6b7a-465a-a599-1a82b5aa8de1 Timestamp: 2026-10-07 12:41:09Z
+The following tenants don't contain accessible subscriptions. Use `az login --allow-no-subscriptions` to have tenant level access.
+1b7b26ac-444b-49f9-b397-7932bf0bac82 'Ideagen plc'
+75d6cc78-71b9-42e6-aa2a-b9889a0f080f 'Cambridge'
+If you need to access subscriptions in the following tenants, please use `az login --tenant TENANT_ID`.
+23ffaa85-ba95-4afe-83f8-bec1204ec961 'The Electoral Commission'
+30c0e8bd-1958-4011-bbba-1bef1c3abd51 'Carpenters Group'
+36326f6d-2a20-41ce-99e2-f06c56ced29a 'Argus Media'
+46f6cbc7-c844-4175-90c4-dd0f275853f1 'Ocean Technologies Group'
+71f4f5a1-3263-48ad-8ea4-0981a6fe99f4 'Morgan Sindall Group plc'
+90578e2d-fce8-4c57-a1a6-2b4909a9dc4d 'Hargreaves Lansdown'
+ce37246c-a47b-4e72-ac75-1f10b15a9379 'Croda'
+f2fe6bd3-9c4a-485b-ae69-e18820a88130 'ERM'
+f4fd83f8-cc5f-4fc6-bf63-41c416a63bcd 'Currys'
+
+[Tenant and subscription selection]
+
+No       Subscription name                     Subscription ID                       Tenant
+-------  ------------------------------------  ------------------------------------  -------------
+[1]      AsosALM                               51cc75f7-8c09-48c5-a810-abf23dc55401  Cybanetix Ltd
+[2]      AsosAnalytics                         c2ef9fbe-d563-4a71-8969-866dc01ac7fa  Cybanetix Ltd
+[3]      AsosAnalyticsNonProd                  cd048c85-4e87-4ea6-bc6f-9603e0dc8d9d  Cybanetix Ltd
+[4]      AsosArchitectureNonProd               cfd7d362-7c3e-492c-b8bd-482590ce6419  Cybanetix Ltd
+[5]      AsosAsset                             0d650175-9c7f-47c2-864b-26f3065ee8d5  Cybanetix Ltd
+[6]      AsosAssetNonProd                      adcd9a78-420a-41d3-8c4c-9c2e09494cd7  Cybanetix Ltd
+[7]      AsosAutomation                        32b46ee2-9ab3-4c89-ae32-ee03b1bb9c9d  Cybanetix Ltd
+[8]      AsosBagAndCheckout                    4c25c297-2bde-4ce2-a013-b6e9468d639c  Cybanetix Ltd
+[9]      AsosBagAndCheckoutNonProd             df2b47b3-b681-46bb-96e1-f79bc2ac6425  Cybanetix Ltd
+[10]     ASOSBigCompute                        e9d3203a-6548-49f6-b293-a352aadf077a  Cybanetix Ltd
+[11]     ASOSBigData                           6fed01fe-9f23-48cb-9f33-9e4ab841af4e  Cybanetix Ltd
+[12]     AsosBrand                             5d0a5bac-f45c-4a3d-8ae2-558e1262663b  Cybanetix Ltd
+[13]     AsosBrandNonProd                      f8ea6035-a3d6-442b-922b-9eab4d19e71b  Cybanetix Ltd
+[14]     AsosBrowse                            65963c70-3ab2-4f45-bc97-5a6df4e86502  Cybanetix Ltd
+[15]     AsosBrowseNonProd                     3d009281-20ae-4f8c-8aab-66b44d3f1a88  Cybanetix Ltd
+[16]     AsosBuyAndMerch                       a0c0ddda-6ecc-46e9-81c4-e6bf35ad4e4d  Cybanetix Ltd
+[17]     AsosBytes                             56e68913-2c63-4cf4-833e-67eccb449a9d  Cybanetix Ltd
+[18]     AsosCare                              b5a3dc4a-9c99-4fce-9bb9-2a173c3a804b  Cybanetix Ltd
+[19]     AsosCareNonProd                       1e4c4cde-f4bf-48e6-8560-2a984cc1ed85  Cybanetix Ltd
+[20]     AsosCloudTraining                     8444c3ca-1d2b-44dd-853e-e8445e58115a  Cybanetix Ltd
+[21]     AsosCommerce                          118a6bec-58c3-4409-ab51-e54745235307  Cybanetix Ltd
+[22]     AsosCommerceDevTest                   192f316c-7515-49db-a399-ae041518faea  Cybanetix Ltd
+[23]     AsosCommerceIntegration               2dd6c30d-7cd4-499b-a8cc-6b5b317f66b6  Cybanetix Ltd
+[24]     AsosCommercePreprod                   d6b539cf-affd-4aae-9a0b-1a3469049bd7  Cybanetix Ltd
+[25]     AsosCommercialIntegration             933a63fb-d054-4244-b9e9-6e305bbe098f  Cybanetix Ltd
+[26]     AsosCommercialIntegrationNonProd      9b759c48-216c-4013-870f-421fdc4ebea9  Cybanetix Ltd
+[27]     AsosCoreServices                      981e9caf-fa1b-45c1-a5f0-f14c6b902dd1  Cybanetix Ltd
+[28]     AsosCreative                          88130683-4ad2-4efa-92bb-2832720456bc  Cybanetix Ltd
+[29]     AsosCreativeDevTest                   086f8b91-30b9-498b-a31a-afab1ee822bf  Cybanetix Ltd
+[30]     AsosCustomer                          e9cb5ad2-7e20-4965-967d-a83004e0aaf2  Cybanetix Ltd
+[31]     AsosCustomerCommunications            dc48b795-dc15-4e8f-b0a7-b7dd37c25ab7  Cybanetix Ltd
+[32]     AsosCustomerCommunicationsNonProd     b0a86b1c-9592-4aeb-aea6-83c22f3a7889  Cybanetix Ltd
+[33]     AsosCustomerNonProd                   0eb9b148-b495-4942-85c7-49fb58a42ade  Cybanetix Ltd
+[34]     AsosCustomerPreprod                   17d8d00e-2173-4dd0-80f2-303f18beab76  Cybanetix Ltd
+[35]     AsosDaaS                              41c34133-7f08-4ed8-aaf2-e1252b908b53  Cybanetix Ltd
+[36]     AsosDatabaseDevTest                   294eed08-73be-4188-a52f-f1d27d75ce4a  Cybanetix Ltd
+[37]     AsosDatabaseNonProd                   27839b58-9325-42c9-95c3-888433dd40a1  Cybanetix Ltd
+[38]     ASOSDatabases                         5303db1f-9a71-4200-963e-08efe2b3a312  Cybanetix Ltd
+[39]     AsosDataLake                          ceead592-7eb0-40b3-9636-62e7d5dfa6b6  Cybanetix Ltd
+[40]     AsosDataLakeNonProd                   7f767153-63c4-4ea8-97aa-28c5ad38bc43  Cybanetix Ltd
+[41]     AsosDataManagement                    404a4474-58e6-4cf6-8783-2078135cd543  Cybanetix Ltd
+[42]     AsosDataManagementNonProd             f09caa3d-6f87-4c90-bf4b-93fea59cca12  Cybanetix Ltd
+[43]     AsosDeliveryReturnsTech               700471c4-f6a7-4785-a3b4-c96690c482c2  Cybanetix Ltd
+[44]     AsosDeliveryReturnsTechNonProd        c1563280-4069-4b2d-a6f0-1dfab6b0441b  Cybanetix Ltd
+[45]     AsosDigitalCoreDevTest                4689b617-acad-40dc-a40f-77a442339589  Cybanetix Ltd
+[46]     AsosDigitalCoreProd                   ededbbd6-b003-444b-bcd7-6eafdde5445c  Cybanetix Ltd
+[47]     AsosDTC                               b4a7f96a-4ab4-4534-8471-2ff3ddfcea64  Cybanetix Ltd
+[48]     AsosDTCNonProd                        b4ebf08c-db24-41db-afe2-54b567cecda4  Cybanetix Ltd
+[49]     AsosEngineering                       775e9939-96af-4f93-a42a-d86c9beb2ff0  Cybanetix Ltd
+[50]     AsosEngineeringNonProd                f8fd6830-454a-4f4f-a63e-29eafda76810  Cybanetix Ltd
+[51]     AsosEnterpriseData                    c834dc13-13eb-4495-bdb6-1d6de06c9c62  Cybanetix Ltd
+[52]     ASOSEnterpriseDataNonProd             e8a0a54d-9b62-44b8-984d-a8bf5ddf7fde  Cybanetix Ltd
+[53]     AsosEnterpriseReporting               c388017b-4264-4121-a9af-6a9c92f07b32  Cybanetix Ltd
+[54]     AsosEnterpriseReportingNonProd        756f3c55-e42d-4756-93e5-465d37e20391  Cybanetix Ltd
+[55]     AsosEnvironments                      ee339554-fefd-4fab-a3ba-98ae55b8a087  Cybanetix Ltd
+[56]     AsosEPF                               58cdd804-32f5-4b01-9710-2e202b9f4ba5  Cybanetix Ltd
+[57]     AsosEPFNonProd                        814547b4-6445-4ebd-9ba1-f8bbbbab495e  Cybanetix Ltd
+[58]     AsosFashion                           82530b8d-e7a9-4126-87c5-69883feb40ed  Cybanetix Ltd
+[59]     AsosFashionDevTest                    7b696382-414c-4283-a8c5-435bf00e012e  Cybanetix Ltd
+[60]     AsosFinance                           2e948937-2df4-4755-9caf-e73058b9163a  Cybanetix Ltd
+[61]     AsosFinanceNonProd                    88161a26-d2e1-4233-b796-dc7888732bcb  Cybanetix Ltd
+[62]     AsosFinanceProd                       e12aa797-fad9-4b45-b47e-035d73cd7dd2  Cybanetix Ltd
+[63]     AsosFulfilment                        1c4fe9b7-9534-4519-8a75-21db83d3b80b  Cybanetix Ltd
+[64]     AsosFulfilmentNonProd                 47f851a6-e2eb-4962-a032-22e45e71397f  Cybanetix Ltd
+[65]     AsosGnatta                            76fb8129-578d-4e7e-b112-3ab59628c5d1  Cybanetix Ltd
+[66]     AsosGnattaNonProd                     f9d538e8-159d-4adf-a4a3-fab69c528415  Cybanetix Ltd
+[67]     AsosIdentityAccessManagement          3b558434-9495-4401-948f-3726b3996192  Cybanetix Ltd
+[68]     AsosImageBuilder                      dc020791-ad6c-49ac-9431-d0655f1da317  Cybanetix Ltd
+[69]     AsosInfra                             fd935a67-3699-4ef0-ab00-190a135f52ff  Cybanetix Ltd
+[70]     AsosInfraDevTest                      2c311741-dc3d-40c5-9531-61fcf0b059e0  Cybanetix Ltd
+[71]     AsosInfrastructure                    71f13494-1d83-4f7d-9099-ef4fe18d7a56  Cybanetix Ltd
+[72]     AsosIntegration                       d274dc4b-d19d-46d0-9704-a60358f9c763  Cybanetix Ltd
+[73]     AsosIntegrationNonProd                9955b73a-2d36-43b1-8b91-c4256a5df70e  Cybanetix Ltd
+[74]     ASOSIPANonProd                        b20c709a-e996-4a03-b5c7-576a1de011a2  Cybanetix Ltd
+[75]     ASOSIPAProd                           1907d41f-7ce6-4311-8e2b-7ce59b353083  Cybanetix Ltd
+[76]     AsosLegacy                            6721b7b7-122e-4fd0-b018-ae54f9c0db26  Cybanetix Ltd
+[77]     AsosLimitedDrops                      3489f0c5-3aec-4fc8-94a3-7a25ea59e3d3  Cybanetix Ltd
+[78]     AsosLimitedDropsNonProd               9d89bf24-bc80-40fa-9c1e-295038d70d01  Cybanetix Ltd
+[79]     ASOSMarketingIntegration              eef15897-b082-4e99-a73c-0a6e01bfbe3b  Cybanetix Ltd
+[80]     AsosMarketplace                       9d2f41ed-8ffe-4969-b575-e286e380795f  Cybanetix Ltd
+[81]     AsosMarketplaceNonProd                ecd7c691-1b53-4865-b28c-15de020b5580  Cybanetix Ltd
+[82]     AsosNetworks                          b804d598-b7d0-40ff-9502-ea731126e242  Cybanetix Ltd
+[83]     AsosOrders                            98b26b0c-9a0b-439c-9279-ab30c755366c  Cybanetix Ltd
+[84]     AsosOrdersNonProd                     bcd86caa-1f29-4068-9dea-28b49e421ad2  Cybanetix Ltd
+[85]     AsosPaymentsDev                       64f48478-2cb1-4204-8264-76858a5787a5  Cybanetix Ltd
+[86]     AsosPaymentsNonProd                   4008f612-e161-470c-9f7a-bb3050991223  Cybanetix Ltd
+[87]     AsosPaymentsNonProd2                  807e6424-12d7-4efd-9f32-1339860d58e5  Cybanetix Ltd
+[88]     AsosPaymentsSecure                    08da5550-9bf6-48ca-be51-b2426579709e  Cybanetix Ltd
+[89]     AsosPeople                            b32a6a49-8e12-4b5c-acdf-4e29dd87a8e5  Cybanetix Ltd
+[90]     AsosPeopleNonProd                     43fbf484-a969-49d2-bf69-5ddad075f55e  Cybanetix Ltd
+[91]     AsosPerftest                          1efaad03-9584-4aae-a139-92fbe4caaa3d  Cybanetix Ltd
+[92]     AsosPlatformEngineering               5130c160-6116-4b41-ac16-769fe9954d97  Cybanetix Ltd
+[93]     AsosPreprod                           e08eaa6b-0f7f-4c68-a006-898d73dc79d4  Cybanetix Ltd
+[94]     AsosPricing                           929a66f3-0ba8-48b0-94e8-35e5901e98f1  Cybanetix Ltd
+[95]     AsosPricingPreprod                    44b7ec56-821e-430a-b2fb-1132d7c65fd1  Cybanetix Ltd
+[96]     AsosProduct                           b97df8df-1754-40ca-acc9-0b48492fb75e  Cybanetix Ltd
+[97]     AsosProductDevTest                    fbb2d58d-a276-4d8c-a236-94132d8eb867  Cybanetix Ltd
+[98]     AsosProductLifecycleManagement        4a783ab2-c8b0-463a-825f-bae6d5108036  Cybanetix Ltd
+[99]     AsosProductLifecycleManagementNon...  1febb298-079c-4452-923a-0a7757972a96  Cybanetix Ltd
+[100]    AsosProductPreprod                    3fbff83a-eb62-4f4d-b4ad-b078b4125ad9  Cybanetix Ltd
+[101]    AsosRecommendationsCompute            38502671-55d1-4260-921a-2803653552de  Cybanetix Ltd
+[102]    AsosRecommendationsData               62e8b35d-1f7a-4115-a720-35637301ee48  Cybanetix Ltd
+[103]    AsosRetailNonProd                     3e94750b-8950-42e9-9276-90a2e162e2ca  Cybanetix Ltd
+[104]    AsosSavedItems                        e831166a-37ea-49c3-8f01-9c4f5461a2e2  Cybanetix Ltd
+[105]    AsosSavedItemsNonProd                 ecec0c3e-6ae1-40d0-b9a6-598a590123bf  Cybanetix Ltd
+[106]    AsosSctCustomsNonProd                 0ba520df-067f-4888-866c-7bb9d4c491e2  Cybanetix Ltd
+[107]    AsosSctCustomsProd                    63057498-3340-43b1-ac22-9c24d35ec321  Cybanetix Ltd
+[108]    AsosSecurity                          0704ec98-04d1-4a47-aeac-76e3ea52613d  Cybanetix Ltd
+[109]    AsosSecurityAudit                     642187ae-16d7-4d4d-a51e-2eb86c8e07a2  Cybanetix Ltd
+[110]    AsosSecurityAuditNonProd              a0bebf46-bc5b-4fee-a902-cc1935c3815e  Cybanetix Ltd
+[111]    AsosSecurityNonProd                   e9f41216-0942-4a4e-a1ff-ffcbb5cd7cbe  Cybanetix Ltd
+[112]    AsosSecurityServices                  6d668a67-015f-4ad5-b7a9-009114018fab  Cybanetix Ltd
+[113]    AsosSharedProduction                  9d943059-e16f-45aa-aa3d-d7d79e470a66  Cybanetix Ltd
+[114]    AsosSRE                               e7572ecb-ff11-41cc-a0fa-e4c32dbf0de0  Cybanetix Ltd
+[115]    AsosSRENonProd                        140f7884-99a0-43cc-8c5d-43a55a1e1714  Cybanetix Ltd
+[116]    AsosStockFulfilmentIntegration        00411848-b352-4f11-a87a-bcc3202646a5  Cybanetix Ltd
+[117]    AsosStockFulfilmentIntegrationNon...  4df6b4be-4a0c-4466-bea4-d57e7084dfe2  Cybanetix Ltd
+[118]    AsosSuppliersPortalNonProd            3ca9f5de-cebd-4157-83e1-81cc1b0a71c8  Cybanetix Ltd
+[119]    AsosSuppliersPortalProd               0d7e9311-10bf-44f0-bf57-5c53897b074d  Cybanetix Ltd
+[120]    AsosTelemetry                         07443d57-2bcc-47eb-bc5f-1fe9f8048301  Cybanetix Ltd
+[121]    AsosTelemetryNonProd                  cd96fef6-c670-40af-b6e7-f1b956056d0d  Cybanetix Ltd
+[122]    AsosTraining                          d4feb26e-bc68-4d4d-9d2c-46d277d3203e  Cybanetix Ltd
+[123]    AsosTrainingNonProd                   036330a3-60ec-4507-bc61-c3a876bdbdbb  Cybanetix Ltd
+[124]    AsosWarehouse                         7477b7de-9e21-41d5-a52b-df67c27f4b22  Cybanetix Ltd
+[125]    AsosWarehouseNonProd                  7e84fda5-edd7-44d2-9d32-d610fc7d7e6b  Cybanetix Ltd
+[126]    AsosWeb                               2896e29c-5128-42e3-a50b-e13e7d47a59e  Cybanetix Ltd
+[127]    ASOSWebNonProd                        b97b4ae3-ccc5-46d9-9739-831517bfd51c  Cybanetix Ltd
+[128]    AsosWholesale                         d4f33eb6-a4c0-49ad-999f-8b93b8197f5d  Cybanetix Ltd
+[129]    AsosWholesaleNonProd                  9eab52e3-427c-401c-a696-7165179d763f  Cybanetix Ltd
+[130]    azmgsub                               8ff62019-542f-491d-b1f8-af486643ed56  Cybanetix Ltd
+[131]    Azure Costs                           b746b283-04ad-408d-a52f-8c851df5917e  Cybanetix Ltd
+[132]    Azure subscription 1                  d190bc69-e7ca-475f-8dca-18a8293bc923  Cybanetix Ltd
+[133]    Carpenters Azure Subscription         85d37dc5-99bc-4730-8b69-028520c1000b  Cybanetix Ltd
+[134]    Croda IaaS - EMEA Production          5d8e9a9c-7809-483e-ba27-52a62c0ed55b  Cybanetix Ltd
+[135] *  CX-Main-Sub                           dd143828-655a-4880-b477-ecbfebc81076  Cybanetix Ltd
+[136]    cybanetix-demo-sub-testing            142df1d4-6e06-4e16-98a6-f92d0f13a4f2  Cybanetix Ltd
+[137]    Experience Education                  613c9943-5b68-47f9-945d-0872a1831eb9  Cybanetix Ltd
+[138]    FTH-SEN-001                           acfb1763-a077-4cf2-b304-48fb5bc23d70  Cybanetix Ltd
+[139]    Hanseaticsoft-Sentinel                69f5862b-60ca-443c-9238-995e332a06ed  Cybanetix Ltd
+[140]    i4-insight-Sentinel                   23f50f5f-d386-4d8f-9b79-68c8112f952a  Cybanetix Ltd
+[141]    IdentityDev                           6b6774c4-8b89-4f4b-a064-5c8e49ae5d1f  Cybanetix Ltd
+[142]    IdentityTest                          14f0e1cc-6412-4598-bb16-43bbd459c868  Cybanetix Ltd
+[143]    ISF-Sentinel                          e9308ec5-8cf0-414f-8d3f-e308087bef10  Cybanetix Ltd
+[144]    IT Azure Management                   80533912-102a-4437-a79c-8c64c220f274  Cybanetix Ltd
+[145]    Management                            03608a36-3175-4afb-8e75-3bcaecde7949  Cybanetix Ltd
+[146]    Microsoft Azure                       1b8d80a5-b16f-4bcc-86da-64d704e0ff1e  Cybanetix Ltd
+[147]    Microsoft Azure                       b2a7c5cc-648e-4ee2-95f6-d6f5632bdbe9  Cybanetix Ltd
+[148]    OneOcean-Sentinel                     f602581b-e6f8-4509-a1c8-9bb978bcfcef  Cybanetix Ltd
+[149]    orca-sub-cpl-sec                      f9909fb7-57ef-45e1-8cba-290655ab7f17  Cybanetix Ltd
+[150]    OTG-Production                        d586b325-2a6c-449b-ae33-fc0874700efe  Cybanetix Ltd
+[151]    Production Subscription               64da507b-0fe7-4f29-ada6-b000970dd9c9  Cybanetix Ltd
+[152]    SCTIntegrationNonProd                 6e94a88d-1098-4bd5-9fb5-8d11300b8890  Cybanetix Ltd
+[153]    SCTIntegrationProd                    772cb435-bd45-49df-9ab0-a499d133ddd6  Cybanetix Ltd
+[154]    SCTOnboardingNonProd                  5165b104-7160-430e-a207-c4b5a7967f31  Cybanetix Ltd
+[155]    soc-prod-01                           83900767-61e3-4840-91e2-5512ee4c96d6  Cybanetix Ltd
+[156]    Stock Integration Account             edefbf53-dd87-48f6-baf9-a01c6f66e24e  Cybanetix Ltd
+[157]    Stock Production Account              99179c0a-197c-48aa-8712-339c181b65c5  Cybanetix Ltd
+[158]    UKIT-PROD-SENTINEL                    ac4cf0ec-dac1-4c20-a9eb-1bff806027a8  Cybanetix Ltd
+[159]    Willmott Dixon – Production           942a3539-f64d-402c-a101-19c0c5f13a3f  Cybanetix Ltd

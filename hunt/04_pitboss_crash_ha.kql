@@ -1,0 +1,5 @@
+// 04 - Packet-engine / pitboss crashes, HA state changes, NIC power-on (reboots). Surfaced the username injection.
+Netscaler_CL | where TimeGenerated > ago(45d)
+| where CitrixAdcModule_s startswith "PITBOSS" or Message has_any ("pitboss","NSPPE","orphan","core") or CitrixAdcEventType_s in ("STATECHANGE","NICPOWERON","UNKNOWN")
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated) by CitrixAdcHostname_s, CitrixAdcModule_s, CitrixAdcEventType_s, Msg=substring(replace_regex(CitrixAdcMessage_s,@"\d+","N"),0,160)
+| order by FirstSeen asc

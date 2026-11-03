@@ -1,0 +1,256 @@
+﻿@{
+
+    # Script module or binary module file associated with this manifest.
+    RootModule        = 'XDRInternals.psm1'
+
+    # Version number of this module.
+    ModuleVersion     = '0.0.1'
+
+    # Supported PSEditions
+    # CompatiblePSEditions = @()
+
+    # ID used to uniquely identify this module
+    GUID              = 'b6c5fa3b-827b-4323-8f8b-bb7b383c536a'
+
+    # Author of this module
+    Author            = 'Fabian Bader & Nathan McNulty'
+
+    # Company or vendor of this module
+    CompanyName       = 'Community Contributors'
+
+    # Copyright statement for this module
+    Copyright         = '(c) Nathan and Fabian. All rights reserved.'
+
+    # Description of the functionality provided by this module
+    Description       = 'The unofficial API cmdlet to interact with the Microsoft Defender XDR portal'
+
+    # Minimum version of the PowerShell engine required by this module
+    # PowerShellVersion = ''
+
+    # Name of the PowerShell host required by this module
+    # PowerShellHostName = ''
+
+    # Minimum version of the PowerShell host required by this module
+    # PowerShellHostVersion = ''
+
+    # Minimum version of Microsoft .NET Framework required by this module. This prerequisite is valid for the PowerShell Desktop edition only.
+    # DotNetFrameworkVersion = ''
+
+    # Minimum version of the common language runtime (CLR) required by this module. This prerequisite is valid for the PowerShell Desktop edition only.
+    # ClrVersion = ''
+
+    # Processor architecture (None, X86, Amd64) required by this module
+    # ProcessorArchitecture = ''
+
+    # Modules that must be imported into the global environment prior to importing this module
+    # RequiredModules = @()
+
+    # Assemblies that must be loaded prior to importing this module
+    # RequiredAssemblies = @()
+
+    # Script files (.ps1) that are run in the caller's environment prior to importing this module.
+    # ScriptsToProcess = @()
+
+    # Type files (.ps1xml) to be loaded when importing this module
+    # TypesToProcess = @()
+
+    # Format files (.ps1xml) to be loaded when importing this module
+    FormatsToProcess  = @('XDRInternals.Format.ps1xml')
+
+    # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
+    # NestedModules = @()
+
+    # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
+    FunctionsToExport = @(
+        "Connect-XdrByBrowser",
+        "Connect-XdrByBrowserExtension",
+        "Connect-XdrByCredential",
+        "Connect-XdrByEstsCookie",
+        "Connect-XdrByPhoneSignIn",
+        "Connect-XdrBySoftwarePasskey",
+        "Connect-XdrBySSO",
+        "Connect-XdrByTemporaryAccessPass",
+        "Connect-XdrEndpointDeviceLiveResponse",
+        "ConvertTo-XdrEncodedAdvancedHuntingQuery",
+        "Disconnect-XdrEndpointDeviceLiveResponse",
+        "Export-XdrAzureDataExplorer",
+        "Export-XdrToSentinel",
+        "Get-XdrActionsCenterHistory",
+        "Get-XdrActionsCenterPending",
+        "Get-XdrAdvancedHuntingFunction",
+        "Get-XdrAdvancedHuntingTableSchema",
+        "Get-XdrAdvancedHuntingUnifiedDetectionRules",
+        "Get-XdrAdvancedHuntingUserHistory",
+        "Get-XdrAlert",
+        "Get-XdrAzureDataExplorerCluster",
+        "Get-XdrAzureDataExplorerIngestionStatus",
+        "Get-XdrCloudAppsActivityTimeline",
+        "Get-XdrCloudAppsApp",
+        "Get-XdrCloudAppsConfiguration",
+        "Get-XdrCloudAppsDiscovery",
+        "Get-XdrCloudAppsGeneralSetting",
+        "Get-XdrCloudAppsGovernance",
+        "Get-XdrCloudAppsPolicy",
+        "Get-XdrConfigurationAlertServiceSetting",
+        "Get-XdrConfigurationAlertTuning",
+        "Get-XdrConfigurationAssetRuleManagement",
+        "Get-XdrConfigurationCriticalAssetManagementClassification",
+        "Get-XdrConfigurationCriticalAssetManagementClassificationSchema",
+        "Get-XdrConfigurationPreviewFeatures",
+        "Get-XdrConfigurationServiceAccountClassification",
+        "Get-XdrConfigurationUnifiedRBACWorkload",
+        "Get-XdrDatalakeDatabase",
+        "Get-XdrDatalakeTableSchema",
+        "Get-XdrEndpointAdvancedFeatures",
+        "Get-XdrEndpointConfigurationAdvancedFeatures",
+        "Get-XdrEndpointConfigurationAuthenticatedTelemetry",
+        "Get-XdrEndpointConfigurationCustomCollectionRule",
+        "Get-XdrEndpointConfigurationIntuneConnection",
+        "Get-XdrEndpointConfigurationLiveResponse",
+        "Get-XdrEndpointConfigurationPotentiallyUnwantedApplications",
+        "Get-XdrEndpointConfigurationPreviewFeature",
+        "Get-XdrEndpointConfigurationPurviewSharing",
+        "Get-XdrEndpointDevice",
+        "Get-XdrEndpointDeviceActionResult",
+        "Get-XdrEndpointDeviceLiveResponseLibrary",
+        "Get-XdrEndpointDeviceLiveResponseLibraryFile",
+        "Get-XdrEndpointDeviceModel",
+        "Get-XdrEndpointDeviceOsVersionFriendlyName",
+        "Get-XdrEndpointDeviceRbacGroup",
+        "Get-XdrEndpointDeviceRbacGroupScope",
+        "Get-XdrEndpointDeviceTag",
+        "Get-XdrEndpointDeviceTimeline",
+        "Get-XdrEndpointDeviceTotals",
+        "Get-XdrEndpointDeviceVendor",
+        "Get-XdrEndpointDeviceWindowsReleaseVersion",
+        "Get-XdrEndpointLicenseReport",
+        "Get-XdrExposureManagementRecommendations",
+        "Get-XdrIdentityAlertThreshold",
+        "Get-XdrIdentityConfigurationDirectoryServiceAccount",
+        "Get-XdrIdentityConfigurationRemediationActionAccount",
+        "Get-XdrIdentityDomainControllerCoverage",
+        "Get-XdrIdentityIdentity",
+        "Get-XdrIdentityOnboardingStatus",
+        "Get-XdrIdentityServiceAccount",
+        "Get-XdrIdentityStatistic",
+        "Get-XdrIdentityUser",
+        "Get-XdrIdentityUserTimeline",
+        "Get-XdrIncident",
+        "Get-XdrIncidentAssociatedAlert",
+        "Get-XdrMtoTenantList",
+        "Get-XdrStreamingApiConfiguration",
+        "Get-XdrSuppressionRule",
+        "Get-XdrTenantContext",
+        "Get-XdrTenantWorkloadStatus",
+        "Get-XdrThreatAnalyticsOutbreaks",
+        "Get-XdrVulnerabilityManagementAdvisories",
+        "Get-XdrVulnerabilityManagementBaseline",
+        "Get-XdrVulnerabilityManagementCertificates",
+        "Get-XdrVulnerabilityManagementChangeEvents",
+        "Get-XdrVulnerabilityManagementDashboard",
+        "Get-XdrVulnerabilityManagementExtensions",
+        "Get-XdrVulnerabilityManagementProducts",
+        "Get-XdrVulnerabilityManagementRemediationTasks",
+        "Get-XdrVulnerabilityManagementVulnerabilities",
+        "Get-XdrXspmAttackPath",
+        "Get-XdrXspmChokePoint",
+        "Get-XdrXspmTopEntryPoint",
+        "Get-XdrXspmTopTarget",
+        "Invoke-XdrAzureDataExplorerQuery",
+        "Invoke-XdrEndpointDeviceAction",
+        "Invoke-XdrEndpointDeviceAutomatedInvestigation",
+        "Invoke-XdrEndpointDeviceLiveResponseCommand",
+        "Invoke-XdrEndpointDevicePolicySync",
+        "Invoke-XdrHuntingQueryValidation",
+        "Invoke-XdrMtoAdvancedHunting",
+        "Invoke-XdrRestMethod",
+        "Invoke-XdrXspmHuntingQuery",
+        "Merge-XdrIncident",
+        "Move-XdrAlertToIncident",
+        "New-XdrAdvancedHuntingFunction",
+        "New-XdrConfigurationCriticalAssetManagementClassification",
+        "New-XdrEndpointConfigurationCustomCollectionRule",
+        "New-XdrEndpointDeviceLiveResponseLibraryFile",
+        "New-XdrEndpointDeviceRbacGroup",
+        "New-XdrIdentityConfigurationRemediationActionAccount",
+        "Remove-XdrAdvancedHuntingFunction",
+        "Remove-XdrConfigurationCriticalAssetManagementClassification",
+        "Remove-XdrEndpointDeviceLiveResponseLibraryFile",
+        "Remove-XdrIdentityConfigurationRemediationActionAccount",
+        "Set-XdrAdvancedHuntingFunction",
+        "Set-XdrAzureDataExplorerConnection",
+        "Set-XdrCloudAppsDiscoveredApp",
+        "Set-XdrConfigurationCriticalAssetManagementClassification",
+        "Set-XdrConfigurationPreviewFeatures",
+        "Set-XdrConnectionSettings",
+        "Set-XdrEndpointAdvancedFeatures",
+        "Set-XdrEndpointConfigurationCustomCollectionRule",
+        "Set-XdrEndpointDeviceAssetValue",
+        "Set-XdrEndpointDeviceCriticalityLevel",
+        "Set-XdrEndpointDeviceExclusionState",
+        "Set-XdrEndpointDeviceRbacGroup",
+        "Set-XdrEndpointDeviceTag",
+        "Set-XdrIdentityConfigurationRemediationActionAccount",
+        "Set-XdrSentinelConnection",
+        "Stop-XdrEndpointDeviceAction",
+        "Update-XdrConnectionSettings"
+    )
+
+    # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
+    # CmdletsToExport = '*'
+
+    # Variables to export from this module
+    # VariablesToExport = '*'
+
+    # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
+    # AliasesToExport = '*'
+
+    # DSC resources to export from this module
+    # DscResourcesToExport = @()
+
+    # List of all modules packaged with this module
+    # ModuleList = @()
+
+    # List of all files packaged with this module
+    # FileList = @()
+
+    # Private data to pass to the module specified in RootModule/ModuleToProcess. This may also contain a PSData hashtable with additional module metadata used by PowerShell.
+    PrivateData       = @{
+
+        PSData = @{
+
+            # Tags applied to this module. These help with module discovery in online galleries.
+            Tags       = @('XDR', 'Defender', 'DefenderXDR', 'MDE', 'MDI', 'DataLake', 'Sentinel', 'MDA', 'MDO', 'XDRInternals', 'Community')
+
+            # A URL to the license for this module.
+            LicenseUri = 'https://github.com/MSCloudInternals/XDRInternals/blob/main/LICENSE'
+
+            # A URL to the main website for this project.
+            ProjectUri = 'https://github.com/MSCloudInternals/XDRInternals'
+
+            # A URL to an icon representing this module.
+            IconUri    = 'https://raw.githubusercontent.com/MSCloudInternals/XDRInternals/main/images/xdrinternals-icon.jpg'
+
+            # ReleaseNotes of this module
+            # ReleaseNotes = ''
+
+            # Prerelease string of this module
+            # Prerelease = ''
+
+            # Flag to indicate whether the module requires explicit user acceptance for install/update/save
+            # RequireLicenseAcceptance = $false
+
+            # External dependent modules of this module
+            # ExternalModuleDependencies = @()
+
+        } # End of PSData hashtable
+
+    } # End of PrivateData hashtable
+
+    # HelpInfo URI of this module
+    # HelpInfoURI = ''
+
+    # Default prefix for commands exported from this module. Override the default prefix using Import-Module -Prefix.
+    # DefaultCommandPrefix = ''
+
+}

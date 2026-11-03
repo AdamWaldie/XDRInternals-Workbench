@@ -1,0 +1,7 @@
+// 15 - Outbound connections from NetScaler internal IPs to public destinations. Look for injection callback hosts. Management-plane traffic (169.254.169.254, 168.63.129.16) shows up here too.
+Netscaler_CL | where TimeGenerated > ago(45d)
+| where CitrixAdcModule_s == "TCP"
+| extend Src=extract(@"Source ([\d\.]+):",1,CitrixAdcMessage_s), Dst=extract(@"Destination ([\d\.]+):(\d+)",1,CitrixAdcMessage_s), DPort=extract(@"Destination [\d\.]+:(\d+)",1,CitrixAdcMessage_s)
+| where Src startswith "10.81.0." or Src startswith "10.82.0."
+| where not(ipv4_is_private(Dst))
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated), ports=make_set(DPort,5), srcs=make_set(Src,5) by CitrixAdcHostname_s, Dst | order by n asc

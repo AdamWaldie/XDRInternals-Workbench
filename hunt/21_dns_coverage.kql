@@ -1,0 +1,10 @@
+// 21 - DNS / URL log coverage per workspace (zero hits only mean something if DNS logs exist).
+union isfuzzy=true
+ (DnsEvents | summarize n=count() by T="DnsEvents"),
+ (DeviceNetworkEvents | where isnotempty(RemoteUrl) | summarize n=count() by T="DeviceNetworkEvents(RemoteUrl)"),
+ (DeviceEvents | where ActionType=="DnsQueryResponse" | summarize n=count() by T="DeviceEvents(DnsQueryResponse)"),
+ (ASimDnsActivityLogs | summarize n=count() by T="ASimDnsActivityLogs"),
+ (AZFWDnsQuery | summarize n=count() by T="AZFWDnsQuery"),
+ (AzureDiagnostics | where Category=="AzureFirewallDnsProxy" | summarize n=count() by T="AzFW DnsProxy"),
+ (CommonSecurityLog | where isnotempty(DestinationHostName) or isnotempty(RequestURL) | summarize n=count() by T=strcat("CEF ",DeviceVendor,"/",DeviceProduct))
+| where n > 0

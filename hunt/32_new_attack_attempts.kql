@@ -1,0 +1,22 @@
+// 32 - New attack attempts on any NetScaler node (catches .151 nodes once they log again). Run in SecurityAuditLogAnalyticsTest.
+let lookback = 24h;
+let iocIps = dynamic(["213.209.159.55","81.94.239.8","45.137.99.92","162.33.177.119","167.88.172.6","5.83.144.60",
+  "23.234.80.205","54.194.246.240","79.133.42.141","68.235.46.82","23.234.88.25","146.70.211.157","138.199.60.36",
+  "37.19.221.148","23.234.94.126","23.162.8.173","138.199.60.22","104.36.50.29","139.59.210.64","103.214.20.54",
+  "146.70.199.170","146.70.143.142","109.136.126.142"]);
+Netscaler_CL
+| where TimeGenerated > ago(lookback)
+| extend Category = case(
+    CitrixAdcModule_s in ("AAA","AAATM","SSLVPN") and CitrixAdcEventType_s != "HTTPREQUEST" and (CitrixAdcMessage_s contains "NSPPE;" or CitrixAdcMessage_s contains "${IFS}" or CitrixAdcMessage_s contains "$(" or CitrixAdcMessage_s has_any ("wget","curl","fetch")), "1 Username command injection",
+    CitrixAdcModule_s startswith "PITBOSS" and CitrixAdcMessage_s has_any ("nsaaad","NSPPE") and CitrixAdcMessage_s has_any ("died","system failure","maximum number","core","orphan"), "2 nsaaad / packet-engine crash",
+    CitrixAdcMessage_s has_any ("idp.test.local","02558a7ac3d8c9c4e9ed3b3569cbf51b") or CitrixAdcMessage_s contains "M0M0M0M0", "3 Forged SAML (CVE-2026-88779)",
+    CitrixAdcMessage_s has_any ("q8k1vi","vadmv1","e6ee7c85","M88npieBFw","uxdport","uxdlock") or CitrixAdcMessage_s contains "LogonPoint/a" or CitrixAdcMessage_s contains ".slap." or CitrixAdcMessage_s contains "x.php", "4 Stager / web-shell / archive strings",
+    Message has_any (iocIps) or Message contains "194.127.166.", "5 Known attacker IP",
+    CitrixAdcEventType_s == "SSL_HANDSHAKE_FAILURE" and CitrixAdcMessage_s has "DTLS", "6 DTLS handshake failure (CVE-2026-88772)",
+    "")
+| where isnotempty(Category)
+| extend SrcIP = coalesce(extract(@"(?:ClientIP|Client_ip|Source|Remote ip =) ((?:\d+\.){3}\d+)", 1, CitrixAdcMessage_s), "")
+| summarize Events=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated),
+            SrcIPs=make_set_if(SrcIP, isnotempty(SrcIP), 20), Sample=take_any(substring(CitrixAdcMessage_s, 0, 250))
+         by Category, Node=CitrixAdcHostname_s
+| order by Category asc, LastSeen desc

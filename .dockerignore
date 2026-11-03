@@ -1,0 +1,12 @@
+.git
+.github
+.vscode
+.claude/settings.local.json
+publish
+TestResults
+test-results
+tests/live.settings.json
+images
+XDRay
+XDRay Firefox
+.devcontainer

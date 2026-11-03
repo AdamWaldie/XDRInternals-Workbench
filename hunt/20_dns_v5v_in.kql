@@ -1,0 +1,15 @@
+// 20 - DNS / URL lookups for v5v.in and any subdomain across DNS, MDE, AzFW, ASIM, CEF, Syslog and NetScaler tables. Run on every workspace.
+let rx = @"(?i)(^|[^a-z0-9-])([a-z0-9-]+\.)*v5v\.in\.?($|[^a-z0-9.-])";
+union isfuzzy=true
+ (DnsEvents | where Name has "v5v.in" | project TimeGenerated, Src="DnsEvents", Host=Computer, Client=ClientIP, Query=Name, Answer=tostring(IPAddresses)),
+ (DeviceNetworkEvents | where RemoteUrl has "v5v.in" | project TimeGenerated, Src="MDE-DeviceNetworkEvents", Host=DeviceName, Client=LocalIP, Query=RemoteUrl, Answer=strcat(RemoteIP,":",RemotePort," ",ActionType," ",InitiatingProcessCommandLine)),
+ (DeviceEvents | where ActionType == "DnsQueryResponse" and AdditionalFields has "v5v.in" | project TimeGenerated, Src="MDE-DnsQueryResponse", Host=DeviceName, Client="", Query=tostring(parse_json(AdditionalFields).DnsQueryString), Answer=tostring(AdditionalFields)),
+ (ASimDnsActivityLogs | where DnsQuery has "v5v.in" | project TimeGenerated, Src="ASimDns", Host=Dvc, Client=SrcIpAddr, Query=DnsQuery, Answer=DnsResponseName),
+ (AZFWDnsQuery | where QueryName has "v5v.in" | project TimeGenerated, Src="AZFWDnsQuery", Host=_ResourceId, Client=SourceIp, Query=QueryName, Answer=ResponseCode),
+ (AzureDiagnostics | where Category in ("AzureFirewallDnsProxy","AzureFirewallApplicationRule","AzureFirewallNetworkRule") and msg_s has "v5v.in" | project TimeGenerated, Src=strcat("AzFW-",Category), Host=Resource, Client="", Query=msg_s, Answer=""),
+ (AZFWApplicationRule | where Fqdn has "v5v.in" | project TimeGenerated, Src="AZFWApplicationRule", Host=_ResourceId, Client=SourceIp, Query=Fqdn, Answer=Action),
+ (CommonSecurityLog | where DestinationHostName has "v5v.in" or RequestURL has "v5v.in" or AdditionalExtensions has "v5v.in" | project TimeGenerated, Src=strcat("CEF-",DeviceVendor,"/",DeviceProduct), Host=DeviceName, Client=SourceIP, Query=coalesce(DestinationHostName,RequestURL), Answer=strcat(DestinationIP," ",DeviceAction)),
+ (Syslog | where SyslogMessage has "v5v.in" | project TimeGenerated, Src=strcat("Syslog-",ProcessName), Host=HostName, Client="", Query=substring(SyslogMessage,0,300), Answer=""),
+ (Netscaler_CL | where Message has "v5v.in" | where not(Message contains "NSPPE") | project TimeGenerated, Src="Netscaler_CL", Host=CitrixAdcHostname_s, Client="", Query=substring(CitrixAdcMessage_s,0,300), Answer="")
+| where Query matches regex rx or Answer matches regex rx or Src in ("Syslog","Netscaler_CL")
+| take 500

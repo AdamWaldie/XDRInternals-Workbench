@@ -1,0 +1,6 @@
+// 14 - Source IPs by time-correlating SSLVPN auth events (+/-300ms) with injection attempts. Proxied IPs (e.g. 20.105.0.122) will dominate.
+let attack = Netscaler_CL | where TimeGenerated > ago(45d) | where CitrixAdcModule_s=="AAA" and CitrixAdcMessage_s contains "NSPPE" | project T=_timestamp_t, H=CitrixAdcHostname_s;
+Netscaler_CL | where TimeGenerated > ago(45d) | where CitrixAdcModule_s=="SSLVPN" and CitrixAdcMessage_s has "Remote ip" and CitrixAdcMessage_s has_any ("login","auth","aaa","nFactor","cgi")
+| extend IP=extract(@"Remote ip = ([\d\.]+)",1,CitrixAdcMessage_s), H=CitrixAdcHostname_s, T=_timestamp_t
+| join kind=inner (attack) on H | where abs(datetime_diff('millisecond',T,T1)) < 300
+| summarize hits=count(), FirstSeen=min(T), LastSeen=max(T) by H, IP | order by hits desc | take 30

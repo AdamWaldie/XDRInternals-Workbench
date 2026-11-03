@@ -1,0 +1,18 @@
+# Layered on top of ../docker-compose.yml by .devcontainer/devcontainer.json.
+# Everything here applies only while VS Code is attached, so the plain
+# `docker compose run --rm` workflow keeps its original behaviour.
+services:
+  xdrinternals:
+    volumes:
+      # The real repo over the top of the `COPY . .` snapshot baked into the
+      # image, so files you create and edit in VS Code are actual repo files
+      # rather than changes thrown away when the container exits. This also
+      # brings in .git, which .dockerignore keeps out of the image.
+      #
+      # NOTE: relative paths in a compose override resolve against the *project*
+      # directory (the repo root, since devcontainer.json lists the root compose
+      # file first), not against this file's directory - hence "." and not "..".
+      - .:/workspace
+    environment:
+      # Let the container fetch the VS Code Server; see docker/init-firewall.sh.
+      - XDR_ALLOW_VSCODE=1

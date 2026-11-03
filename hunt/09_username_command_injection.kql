@@ -1,0 +1,7 @@
+// 09 - Command injection via nFactor/AAA username field (${IFS}, wget/curl/fetch, 'pitboss PPE unexpectedly died NSPPE;' prefix). KEY HUNT.
+Netscaler_CL | where TimeGenerated > ago(45d)
+| where CitrixAdcEventType_s == "LOGIN_FAILED" or (CitrixAdcModule_s == "AAA" and CitrixAdcMessage_s has "LOGIN REQ")
+| extend User=coalesce(extract(@"username: <(.*?)>, pwdlen",1,CitrixAdcMessage_s), extract(@"User (.*?) - Client_ip",1,CitrixAdcMessage_s))
+| where User has_any ("${IFS}","wget","fetch","curl","uname","pitboss","NSPPE",";","|","`","$(") 
+| extend ClientIP=extract(@"Client_ip (\S+)",1,CitrixAdcMessage_s)
+| project TimeGenerated, CitrixAdcHostname_s, CitrixAdcEventType_s, ClientIP, User, M=substring(CitrixAdcMessage_s,0,400) | order by TimeGenerated asc

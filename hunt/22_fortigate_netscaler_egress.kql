@@ -1,0 +1,5 @@
+// 22 - ASOS FortiGate (CEF in SecurityAuditLogAnalyticsTest): NetScaler subnet traffic and any traffic to/from the injection callback IPs.
+CommonSecurityLog | where TimeGenerated > ago(45d) | where DeviceVendor=="Fortinet"
+| where SourceIP startswith "10.81.0." or SourceIP startswith "10.82.0." or DestinationIP in ("213.209.159.55","45.137.99.92") or SourceIP in ("213.209.159.55","45.137.99.92")
+| summarize n=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated), dsts=dcount(DestinationIP), acts=make_set(DeviceAction,5) by Hit=iff(DestinationIP in ("213.209.159.55","45.137.99.92") or SourceIP in ("213.209.159.55","45.137.99.92"),"IOC-IP","netscaler-subnet"), SourceIP
+| order by Hit asc, n desc
