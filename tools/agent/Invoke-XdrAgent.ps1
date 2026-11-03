@@ -194,6 +194,10 @@ if (-not (Test-Path -LiteralPath $SessionPath)) {
     exit 4
 }
 $saved = Get-Content -LiteralPath $SessionPath -Raw | ConvertFrom-Json
+if (-not $saved -or -not $saved.SccAuth -or -not $saved.SavedAt) {
+    Write-Stderr "NO SESSION: $SessionPath holds no session (cleared). Run the standup again."
+    exit 4
+}
 $savedAt = [datetime]::Parse($saved.SavedAt, [cultureinfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
 $ageHours = ((Get-Date).ToUniversalTime() - $savedAt.ToUniversalTime()).TotalHours
 if ($ageHours -gt $MaxSessionAgeHours) {

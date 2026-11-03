@@ -12,10 +12,17 @@
     button:disabled { opacity: 0.6; }
     p.status { font-size: 12px; min-height: 32px; margin: 8px 0 0; }
     p.warn { font-size: 11px; color: #a33; margin-top: 8px; }
+    p.hint { font-size: 11px; color: #444; margin: 6px 0 0; }
+    hr { margin: 12px 0 4px; border: 0; border-top: 1px solid #ddd; }
+    code { font-size: 11px; }
 </style>
 </head>
 <body>
     <h1>XDR Docker Relay</h1>
+    <button id="save">Save session for Claude</button>
+    <p class="hint">Saves this window's Defender portal session to a file. Save it in your
+        Workbench repo's <code>.xdr-agent</code> folder; Claude takes it from there.</p>
+    <hr>
     <label for="code">Pairing code (from Connect-XdrByBrowserExtension)</label>
     <input id="code" type="text" autocomplete="off" spellcheck="false">
     <label for="port">Container relay port</label>

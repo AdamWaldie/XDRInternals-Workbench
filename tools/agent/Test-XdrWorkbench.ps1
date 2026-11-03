@@ -79,10 +79,11 @@ if ((Test-Path $a) -and (Test-Path $b)) {
 # Saved sessions
 $maxAge = 12
 $sessions = @(@($env:XDR_SESSION_PATH, (Join-Path $repoRoot '.xdr-agent/session.json'), (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.xdr-agent/session.json')) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique)
-if (-not $sessions) { Add-Check 'session' 'WARN' 'No saved session' 'Run ./tools/agent/Start-XdrWorkbench.ps1 -Tenant <name>.' }
+if (-not $sessions) { Add-Check 'session' 'WARN' 'No saved session' 'Save a session from the relay extension into <repo>/.xdr-agent, then run Import-XdrSessionDrop.ps1 (or Start-XdrWorkbench.ps1 on the user machine).' }
 foreach ($s in $sessions) {
     try {
         $j = Get-Content $s -Raw | ConvertFrom-Json
+        if (-not $j.SccAuth) { Add-Check 'session' 'WARN' "$s is cleared" 'Run the standup.'; continue }
         $age = ((Get-Date).ToUniversalTime() - ([datetime]::Parse($j.SavedAt, [cultureinfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)).ToUniversalTime()).TotalHours
         $st = if ($age -gt $maxAge) { 'FAIL' } else { 'OK' }
         Add-Check 'session' $st ("{0}: {1} ({2}) as {3}, saved {4:N1} h ago" -f $s, $j.TenantName, $j.TenantId, $j.Account, $age) $(if ($st -eq 'FAIL') { "Older than the wrapper's $maxAge h limit. Rerun the standup." })
@@ -98,7 +99,9 @@ foreach ($s in $sessions) {
 }
 $caseFile = Join-Path $repoRoot '.xdr-agent/case.json'
 if (Test-Path $caseFile) {
-    try { $c = Get-Content $caseFile -Raw | ConvertFrom-Json; Add-Check 'case lock' 'OK' "Hunts locked to $($c.CaseTenantName) ($($c.CaseTenantId)); estate sweeps need -AllowMultiTenant" }
+    try { $c = Get-Content $caseFile -Raw | ConvertFrom-Json
+        if ($c.CaseTenantId) { Add-Check 'case lock' 'OK' "Hunts locked to $($c.CaseTenantName) ($($c.CaseTenantId)), mode $($c.Mode); estate sweeps need -AllowMultiTenant" }
+        else { Add-Check 'case lock' 'WARN' 'Case lock cleared' 'Run the standup for the case customer.' } }
     catch { Add-Check 'case lock' 'FAIL' "$caseFile unreadable" 'Rerun the standup, or remove the file with Stop-XdrWorkbench.ps1.' }
 } else { Add-Check 'case lock' 'WARN' 'No case lock recorded; hunts are only held to one tenant per call' 'Run the standup for the case tenant, or pass -CaseTenantId on every call.' }
 $dockerIgnore = Join-Path $repoRoot '.dockerignore'
@@ -126,6 +129,24 @@ if ($Live) {
     $text = ($out | Out-String).Trim() -replace '\s+', ' '
     if ($code -eq 0) { Add-Check 'live call' 'OK' $text }
     else { Add-Check 'live call' 'FAIL' "exit $code ($meaning): $($text.Substring(0, [Math]::Min(300, $text.Length)))" $(if ($text -match '401|403') { 'Session expired or no portal access in that tenant. Rerun the standup.' } else { 'See the wrapper message.' }) }
+}
+
+# Control hunt: proves the whole chain (session, relay, MTO, case lock) returns data for the case tenant.
+$caseLock = if (Test-Path $caseFile) { try { Get-Content $caseFile -Raw | ConvertFrom-Json } catch { $null } }
+if ($Live -and $caseLock.CaseTenantId) {
+    $case = $caseLock
+    $pw = (Get-Process -Id $PID).Path
+    $q = "Invoke-XdrMtoAdvancedHunting -TenantIds '$($case.CaseTenantId)' -DaysAgo 1 -QueryText 'DeviceInfo | where Timestamp > ago(1d) | summarize Devices = dcount(DeviceId)'"
+    $errFile = [System.IO.Path]::GetTempFileName()
+    $out = & $pw -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-XdrAgent.ps1') -Command $q 2>$errFile
+    $code = $LASTEXITCODE
+    $errText = Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
+    $rows = @(); try { $rows = @(($out | Out-String) | ConvertFrom-Json) } catch { }
+    $hit = $rows | Where-Object { "$($_.TenantId)" -eq $case.CaseTenantId } | Select-Object -First 1
+    if ($code -eq 0 -and $hit -and $hit.Devices -gt 0) { Add-Check 'control hunt' 'OK' "$($hit.TenantName): $($hit.Devices) devices reporting in the last day" }
+    elseif ($code -eq 0 -and $hit) { Add-Check 'control hunt' 'WARN' "$($hit.TenantName) answered but no devices reported in the last day" 'Check Defender for Endpoint onboarding for this customer before relying on endpoint hunts.' }
+    elseif ($errText -match 'AADSTS53000') { Add-Check 'control hunt' 'FAIL' "Hunting refused: AADSTS53000 (Conditional Access requires a compliant device)" 'The session came from a window without device identity (usually Incognito). Rerun the standup without -Incognito, signing in from your normal Chrome profile.' }
+    else { Add-Check 'control hunt' 'FAIL' "exit $code, no rows for case tenant $($case.CaseTenantName) ($($case.CaseTenantId))" $(switch ($code) { 2 { 'Tenant not searched: satisfy the MFA or Conditional Access challenge for this customer in the portal, then rerun.' } 4 { 'No or stale session: rerun the standup.' } 7 { 'Tenant guard: the case lock and the session disagree. Rerun the standup for the case customer.' } default { 'Rerun with the wrapper directly to see the error.' } }) }
 }
 
 if ($Json) { $results | ConvertTo-Json -Depth 3 }

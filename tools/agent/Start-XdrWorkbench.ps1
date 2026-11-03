@@ -35,12 +35,17 @@
         Relay port. Must match the extension popup. Default 8787.
 
     .PARAMETER AllowMto
-        Save the session even when the signed-in tenant differs from the target, provided the
-        target is in that tenant's MTO list. Hunting then passes -TenantIds <target>; entity
-        cmdlets still act on the signed-in tenant.
+        Kept for compatibility; MTO is now automatic. When the signed-in tenant differs from the
+        target but has it in its MTO list, the case lock is set in MTO mode (hunting only).
 
     .PARAMETER NoBrowser
-        Don't launch Chrome (use inside the container, or when the incognito window is already open).
+        Don't launch Chrome (use inside the container, or when the portal window is already open).
+
+    .PARAMETER Incognito
+        Open the portal in an Incognito window instead of a normal one. Incognito sends no device
+        identity to Entra, so accounts under a compliant-device Conditional Access policy (the
+        Cybanetix analyst accounts) get AADSTS53000 on multi-tenant hunting. Use it only for accounts
+        without that policy.
 
     .PARAMETER NoCaseFolder
         Skip creating the investigation folder (the case already has an ir-case-workspace folder).
@@ -61,6 +66,7 @@ param(
     [Parameter(ParameterSetName = 'Start')][int]$Port = 8787,
     [Parameter(ParameterSetName = 'Start')][switch]$AllowMto,
     [Parameter(ParameterSetName = 'Start')][switch]$NoBrowser,
+    [Parameter(ParameterSetName = 'Start')][switch]$Incognito,
     [Parameter(ParameterSetName = 'Start')][switch]$NoCaseFolder,
     [Parameter(Mandatory, ParameterSetName = 'List')][switch]$ListTenants
 )
@@ -98,27 +104,29 @@ if ($IsWindows) {
     if ($busy) { Fail "Port $Port is already in use by $($busy.Process -join ', ') (PID $($busy.Pid -join ', ')). Close the earlier Connect-XdrByBrowserExtension window, or pick another port with -Port (and the same port in the extension)." }
 }
 
-Step 'Incognito sign-in window'
-$ext = @(Get-XdrRelayExtensionState)
+Step 'Portal window'
+$ext = @(try { Get-XdrRelayExtensionState } catch { })
 if ($ext) {
     foreach ($e in $ext) {
-        $flag = if ($e.Disabled) { 'DISABLED' } elseif ($e.Incognito) { 'allowed in incognito' } else { 'NOT allowed in incognito' }
+        $flag = if ($e.Disabled) { 'DISABLED' } elseif ($e.Incognito) { 'enabled, allowed in incognito' } else { 'enabled' }
         Write-Host "Relay extension ($($e.Profile)): $flag"
     }
-    if (-not ($ext | Where-Object { $_.Incognito -and -not $_.Disabled })) {
+    if ($Incognito -and -not ($ext | Where-Object { $_.Incognito -and -not $_.Disabled })) {
         Write-Host "Turn on 'Allow in Incognito' for XDR Docker Relay: chrome://extensions > Details." -ForegroundColor Yellow
     }
 } elseif (-not $NoBrowser) {
-    Write-Host "Relay extension not found in Chrome profiles. Load it unpacked from $(Join-Path $repoRoot 'chrome-ext') and allow it in incognito." -ForegroundColor Yellow
+    Write-Host "Relay extension not found in Chrome profiles. Load it unpacked from $(Join-Path $repoRoot 'chrome-ext')." -ForegroundColor Yellow
 }
 $chrome = if ($NoBrowser) { $null } else { Find-XdrChrome }
+$kind = if ($Incognito) { 'an Incognito' } else { 'a new Chrome' }
 if ($chrome) {
-    Start-Process -FilePath $chrome -ArgumentList '--incognito', $url
-    Write-Host "Opened an incognito window on $($target.Name). Sign in there with your Cybanetix account."
+    $chromeArgs = if ($Incognito) { @('--incognito', $url) } else { @('--new-window', $url) }
+    Start-Process -FilePath $chrome -ArgumentList $chromeArgs
+    Write-Host "Opened $kind window on $($target.Name). Sign in there if asked, and wait for Advanced Hunting to load."
 } else {
-    Write-Host "Open a Chrome incognito window (Ctrl+Shift+N) at:`n  $url"
+    Write-Host "Open $kind window at:`n  $url"
 }
-Write-Host "In that incognito window, open the XDR Docker Relay extension, paste the code printed below, keep port $Port, and click Relay."
+Write-Host "In that window, click the XDR Docker Relay extension, paste the pairing code printed below, keep port $Port, and click 'Relay session to container'."
 
 Step 'Sign-in relay'
 Connect-XdrByBrowserExtension -Port $Port -TenantId $target.TenantId
@@ -131,20 +139,18 @@ $mode = 'direct'
 if ($liveId -ne $target.TenantId) {
     $mto = @(Get-XdrMtoTenantList -ErrorAction SilentlyContinue)
     $inMto = $mto | Where-Object tenantId -eq $target.TenantId
-    if ($inMto -and $AllowMto) {
+    if ($inMto) {
         $mode = 'mto'
-        Write-Host "The session is for $liveName, but $($target.Name) is in its MTO list. Saving for MTO hunting." -ForegroundColor Yellow
-    } elseif ($inMto) {
-        Fail "The session is for $liveName, not $($target.Name). $($target.Name) is reachable through MTO from here: rerun with -AllowMto for hunting only, or switch tenant in the incognito window and rerun. Nothing was saved."
+        Write-Host "The session is for $liveName, and $($target.Name) is in its MTO list. Case lock set in MTO mode: hunting works; incidents, devices and timelines would answer for $liveName, so the wrapper refuses them." -ForegroundColor Yellow
     } else {
-        Fail "The session is for $liveName, not $($target.Name), and $($target.Name) isn't in its MTO list. Switch tenant in the incognito window and rerun. Nothing was saved."
+        Fail "The session is for $liveName, not $($target.Name), and $($target.Name) isn't in its MTO list. Switch to $($target.Name) in the portal and rerun. Nothing was saved."
     }
 }
 
 Step 'Hand session to the agent'
 & (Join-Path $PSScriptRoot 'Save-XdrAgentSession.ps1') -InRepo
 # Default case lock for every wrapper call until teardown or the next standup.
-[ordered]@{ CaseTenantId = $target.TenantId; CaseTenantName = $target.Name; SessionTenantId = $liveId; Case = $Case; SetUtc = (Get-Date).ToUniversalTime().ToString('o') } |
+[ordered]@{ CaseTenantId = $target.TenantId; CaseTenantName = $target.Name; SessionTenantId = $liveId; Case = $Case; Mode = $mode; SetUtc = (Get-Date).ToUniversalTime().ToString('o') } |
     ConvertTo-Json | Set-Content -Path (Join-Path $repoRoot '.xdr-agent/case.json') -Encoding utf8
 Write-Host "Case lock: $($target.Name) ($($target.TenantId))"
 

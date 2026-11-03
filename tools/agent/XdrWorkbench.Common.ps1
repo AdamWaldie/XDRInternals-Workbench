@@ -55,36 +55,46 @@ function Get-XdrChromeUserDataDir {
 }
 
 function Get-XdrRelayExtensionState {
-    # Best effort: finds the unpacked relay extension in each Chrome profile and whether incognito is allowed.
-    $root = Get-XdrChromeUserDataDir
-    if (-not (Test-Path $root)) { return @() }
-    foreach ($profileDir in Get-ChildItem $root -Directory | Where-Object { $_.Name -eq 'Default' -or $_.Name -like 'Profile *' }) {
-        $settings = @{}
-        foreach ($file in 'Preferences', 'Secure Preferences') {
-            $p = Join-Path $profileDir.FullName $file
-            if (-not (Test-Path $p)) { continue }
-            try { $json = Get-Content $p -Raw | ConvertFrom-Json -AsHashtable -Depth 64 } catch { continue }
-            $ext = $json['extensions']; if (-not $ext) { continue }
-            $s = $ext['settings']; if (-not $s) { continue }
-            foreach ($id in $s.Keys) {
-                if (-not $settings.ContainsKey($id)) { $settings[$id] = @{} }
-                foreach ($k in $s[$id].Keys) { $settings[$id][$k] = $s[$id][$k] }
+    # Best effort: finds the unpacked relay extension in each Chrome profile and whether incognito is
+    # allowed. Chrome's preference files vary by version and some extension records are partial, so
+    # every lookup is null-safe and any failure returns nothing rather than stopping the caller.
+    try {
+        $root = Get-XdrChromeUserDataDir
+        if (-not $root -or -not (Test-Path $root)) { return @() }
+        foreach ($profileDir in Get-ChildItem $root -Directory | Where-Object { $_.Name -eq 'Default' -or $_.Name -like 'Profile *' }) {
+            $settings = @{}
+            foreach ($file in 'Preferences', 'Secure Preferences') {
+                $p = Join-Path $profileDir.FullName $file
+                if (-not (Test-Path $p)) { continue }
+                try { $json = Get-Content $p -Raw | ConvertFrom-Json -AsHashtable -Depth 64 } catch { continue }
+                if ($json -isnot [hashtable]) { continue }
+                $ext = $json['extensions']; if ($ext -isnot [hashtable]) { continue }
+                $s = $ext['settings']; if ($s -isnot [hashtable]) { continue }
+                foreach ($id in $s.Keys) {
+                    $rec = $s[$id]; if ($rec -isnot [hashtable]) { continue }
+                    if (-not $settings.ContainsKey($id)) { $settings[$id] = @{} }
+                    foreach ($k in $rec.Keys) { $settings[$id][$k] = $rec[$k] }
+                }
             }
-        }
-        foreach ($id in $settings.Keys) {
-            $e = $settings[$id]
-            $path = "$($e['path'])"
-            $name = "$($e['manifest']['name'])"
-            if ($path -match '(chrome-ext|browser-extension)[\\/]?$' -or $name -eq 'XDR Docker Relay') {
-                [pscustomobject]@{
-                    Profile   = $profileDir.Name
-                    Id        = $id
-                    Path      = $path
-                    Incognito = [bool]$e['incognito']
-                    Disabled  = ($e['state'] -eq 0) -or (@($e['disable_reasons'] | Where-Object { $_ -and $_ -ne 0 }).Count -gt 0)
+            foreach ($id in $settings.Keys) {
+                $e = $settings[$id]
+                $path = "$($e['path'])"
+                $manifest = $e['manifest']
+                $name = if ($manifest -is [hashtable]) { "$($manifest['name'])" } else { '' }
+                if ($path -match '(chrome-ext|browser-extension)[\\/]?$' -or $name -eq 'XDR Docker Relay') {
+                    [pscustomobject]@{
+                        Profile   = $profileDir.Name
+                        Id        = $id
+                        Path      = $path
+                        Incognito = [bool]$e['incognito']
+                        Disabled  = ($e['state'] -eq 0) -or (@($e['disable_reasons'] | Where-Object { $_ -and $_ -ne 0 }).Count -gt 0)
+                    }
                 }
             }
         }
+    } catch {
+        Write-Verbose "Extension check skipped: $($_.Exception.Message)"
+        return @()
     }
 }
 

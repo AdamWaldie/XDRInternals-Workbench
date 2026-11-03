@@ -30,7 +30,14 @@ Step 'Saved agent sessions'
 & (Join-Path $PSScriptRoot 'Save-XdrAgentSession.ps1') -Clear -InRepo
 & (Join-Path $PSScriptRoot 'Save-XdrAgentSession.ps1') -Clear
 $caseFile = Join-Path $repoRoot '.xdr-agent/case.json'
-if (Test-Path $caseFile) { Remove-Item -LiteralPath $caseFile -Force; Write-Host "Removed case lock $caseFile" }
+if (Test-Path $caseFile) {
+    try { Remove-Item -LiteralPath $caseFile -Force -ErrorAction Stop; Write-Host "Removed case lock $caseFile" }
+    catch { Set-Content -LiteralPath $caseFile -Value '{}' -Encoding utf8; Write-Host "Cleared case lock $caseFile" }
+}
+foreach ($d in @(Get-ChildItem -Path (Join-Path $repoRoot '.xdr-agent') -Filter 'xdr-session-drop*.json' -File -ErrorAction SilentlyContinue)) {
+    try { Remove-Item -LiteralPath $d.FullName -Force -ErrorAction Stop } catch { Set-Content -LiteralPath $d.FullName -Value '{}' -Encoding utf8 }
+    Write-Host "Cleared unused session drop $($d.Name)"
+}
 if ($env:XDR_SESSION_PATH -and (Test-Path $env:XDR_SESSION_PATH)) {
     Remove-Item -LiteralPath $env:XDR_SESSION_PATH -Force; Write-Host "Removed $env:XDR_SESSION_PATH"
 }

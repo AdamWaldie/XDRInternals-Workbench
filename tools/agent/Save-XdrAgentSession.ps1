@@ -48,8 +48,14 @@ if ($InRepo) {
 
 if ($Clear) {
     if (Test-Path -LiteralPath $Path) {
-        Remove-Item -LiteralPath $Path -Force
-        Write-Host "Removed saved agent session: $Path"
+        try {
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            Write-Host "Removed saved agent session: $Path"
+        } catch {
+            # Some shells (such as Claude's sandbox over a mounted folder) can write but not delete.
+            Set-Content -LiteralPath $Path -Value '{}' -Encoding utf8
+            Write-Host "Cleared saved agent session (file emptied, not deleted): $Path"
+        }
     } else {
         Write-Host "No saved agent session at $Path"
     }
