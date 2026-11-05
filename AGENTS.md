@@ -11,4 +11,6 @@ The essentials, in case nothing else is read:
 - One customer per case. The wrapper enforces the case lock (exit 7), refuses state changes without the analyst's approval (exit 3), and names hunting failures (exit 8; see `.claude/skills/xdrinternals/reference/hunting-outage.md`).
 - Case data stays under `investigations/` (git-ignored).
 
+After adding or renaming a public function in `XDRInternals/functions/`, run `pwsh -NoProfile -File build/Sync-CmdletDocumentation.ps1` and commit its output (README cmdlet table, `XDRInternals.psd1` exports, XDRay API mappings), and save the new file as UTF-8 with BOM. CI fails on either, and the sync workflow can't open its own fix PR in this repo.
+
 Keep the skill in one place: edit `.claude/skills/xdrinternals/`, then rebuild the packaged copies with `pwsh -NoProfile -File claude-desktop/build-workbench-skill.ps1 [-InstallCodex]`.

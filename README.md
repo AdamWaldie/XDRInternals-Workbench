@@ -138,6 +138,7 @@ Get-XdrTenantContext -Force
 | Get-XdrXspmChokePoint                                           | Retrieves choke point data from Microsoft Defender XDR XSPM. |
 | Get-XdrXspmTopEntryPoint                                        | Retrieves top entry points from Microsoft Defender XDR XSPM attack paths. |
 | Get-XdrXspmTopTarget                                            | Retrieves top targets from Microsoft Defender XDR XSPM attack paths. |
+| Invoke-XdrAdvancedHunting                                       | Runs a read-only Advanced Hunting query against the session's own tenant (direct mode). |
 | Invoke-XdrAzureDataExplorerQuery                                | Executes a KQL query or management command against an Azure Data Explorer cluster. |
 | Invoke-XdrEndpointDeviceAction                                  | Invokes response actions on an endpoint device in Microsoft Defender XDR. |
 | Invoke-XdrEndpointDeviceAutomatedInvestigation                  | Starts an automated investigation on an endpoint device in Microsoft Defender XDR. |

@@ -101,6 +101,7 @@ The session stays until the user asks to end it (the wrapper refuses one older t
 The source of truth is `<repo>/.claude/skills/xdrinternals/` (this file and `reference/`). The account skill `xdrinternals-workbench` (Claude) and the Codex skill of the same name are built from it, never edited by hand:
 
 ```powershell
+pwsh -NoProfile -File build/Sync-CmdletDocumentation.ps1        # after adding a public function: README, psd1 exports, XDRay mappings
 pwsh -NoProfile -File tools/agent/Build-XdrUsageIndex.ps1        # after a module update
 pwsh -NoProfile -File claude-desktop/build-workbench-skill.ps1   # dist/xdrinternals-workbench-skill.zip
 pwsh -NoProfile -File claude-desktop/build-workbench-skill.ps1 -InstallCodex   # also into ~/.codex/skills

@@ -477,6 +477,10 @@
     "ApiUri": "https://security.microsoft.com/apiproxy/mtp/threatAnalytics/outbreaks/topThreats"
   },
   {
+    "Cmdlet": "Invoke-XdrAdvancedHunting",
+    "ApiUri": "https://security.microsoft.com/apiproxy/hunting/huntingQueryExecutorService/queryExecutor/v1/external"
+  },
+  {
     "Cmdlet": "Invoke-XdrEndpointDeviceAction",
     "ApiUri": "https://security.microsoft.com/apiproxy/mtp/responseApiPortal/requests/create",
     "Parameters": {
