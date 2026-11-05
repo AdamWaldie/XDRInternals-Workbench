@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Hands the current XDRInternals session to Claude's agent wrapper.
 

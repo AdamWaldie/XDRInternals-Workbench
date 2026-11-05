@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Diagnoses the Workbench setup and the current session, and says how to fix each problem.
 

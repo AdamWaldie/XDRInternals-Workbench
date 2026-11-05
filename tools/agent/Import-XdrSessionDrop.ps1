@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Claude-side standup: turns the session file the relay extension saved into a working,
         tenant-checked Workbench session, with the case lock and case folder.

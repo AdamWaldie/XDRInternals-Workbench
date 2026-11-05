@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Runs XDRInternals commands for Claude against the session saved by Save-XdrAgentSession.ps1.
 

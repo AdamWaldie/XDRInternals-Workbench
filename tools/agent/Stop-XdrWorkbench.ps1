@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Tears down a hunt or IR session: removes the saved portal session, purges module temp
         data, checks no customer data is staged in git, and optionally removes the URL

@@ -1,4 +1,4 @@
-# Shared helpers for Start-, Stop- and Test-XdrWorkbench. Dot-source; no side effects.
+﻿# Shared helpers for Start-, Stop- and Test-XdrWorkbench. Dot-source; no side effects.
 
 function Get-XdrWorkbenchRoot { (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path }
 

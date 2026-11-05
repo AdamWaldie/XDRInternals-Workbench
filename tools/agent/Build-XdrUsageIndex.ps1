@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Builds the per-cmdlet usage index for the xdrinternals skill from the module's own help.
 

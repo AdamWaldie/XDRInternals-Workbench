@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Stands up a hunt or IR session for one customer tenant: checks, incognito sign-in relay,
         tenant confirmation, session handoff and the case folder.
