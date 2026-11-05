@@ -107,12 +107,15 @@ if ($IsLinux -or $IsMacOS) {
     chmod 700 $directory
     chmod 600 $Path
 } else {
-    $acl = Get-Acl -LiteralPath $Path
+    # Read and write the DACL only. Get-Acl/Set-Acl carry the whole security descriptor, and writing the audit
+    # (SACL) section needs SeSecurityPrivilege, which a normal user session does not hold.
+    $file = Get-Item -LiteralPath $Path
+    $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl($file, [System.Security.AccessControl.AccessControlSections]::Access)
     $acl.SetAccessRuleProtection($true, $false)
-    foreach ($rule in @($acl.Access)) { $null = $acl.RemoveAccessRule($rule) }
+    foreach ($rule in @($acl.GetAccessRules($true, $true, [System.Security.Principal.NTAccount]))) { $null = $acl.RemoveAccessRule($rule) }
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow')))
-    Set-Acl -LiteralPath $Path -AclObject $acl
+    [System.IO.FileSystemAclExtensions]::SetAccessControl($file, $acl)
 }
 $record | ConvertTo-Json | Set-Content -LiteralPath $Path -Encoding utf8
 
