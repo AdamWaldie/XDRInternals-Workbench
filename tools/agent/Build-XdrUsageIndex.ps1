@@ -1,10 +1,10 @@
 ﻿<#
     .SYNOPSIS
-        Builds the per-cmdlet usage index for the xdrinternals skill from the module's own help.
+        Builds the per-cmdlet usage index for the xdrinternals-workbench skill from the module's own help.
 
     .DESCRIPTION
         Imports XDRInternals, reads Get-Help -Full for every exported cmdlet, and writes
-        .claude/skills/xdrinternals/reference/usage/<group>.md plus INDEX.md. The guard column
+        .claude/skills/xdrinternals-workbench/reference/usage/<group>.md plus INDEX.md. The guard column
         uses the same rules as Invoke-XdrAgent.ps1, so the index can't drift from what the
         wrapper allows. Run it after any module change, then run claude-desktop/build-workbench-skill.ps1
         to repackage the skill.
@@ -14,7 +14,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$OutDir = (Join-Path $PSScriptRoot '../../.claude/skills/xdrinternals/reference/usage')
+    [string]$OutDir = (Join-Path $PSScriptRoot '../../.claude/skills/xdrinternals-workbench/reference/usage')
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path

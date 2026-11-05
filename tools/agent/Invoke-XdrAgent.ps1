@@ -18,7 +18,7 @@
         Exit codes: 0 ok, 1 the command threw, 2 non-terminating errors (partial results),
         3 refused by the write guard, 4 no or stale session, 5 tenant mismatch, 7 tenant guard,
         6 not PowerShell 7 (4 also when the portal answers 440 to a non-hunting call), 8 hunt session timeout (HTTP 440 from a hunting endpoint while the
-        portal session still works; see .claude/skills/xdrinternals/reference/hunting-outage.md),
+        portal session still works; see .claude/skills/xdrinternals-workbench/reference/hunting-outage.md),
         9 running in a Claude Code cloud session (the Workbench works only on the analyst's computer).
 
     .PARAMETER Command
