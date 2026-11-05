@@ -12,6 +12,9 @@
     button:disabled { opacity: 0.6; }
     p.status { font-size: 12px; min-height: 32px; margin: 8px 0 0; }
     p.warn { font-size: 11px; color: #a33; margin-top: 8px; }
+    p.listener { font-size: 12px; margin: 8px 0 0; padding: 6px; border-radius: 4px; background: #f2f2f2; }
+    p.listener.ok { background: #e6f4ea; color: #1e5631; }
+    p.listener.none { background: #fdecea; color: #8a1c13; }
     p.hint { font-size: 11px; color: #444; margin: 6px 0 0; }
     hr { margin: 12px 0 4px; border: 0; border-top: 1px solid #ddd; }
     code { font-size: 11px; }
@@ -20,26 +23,26 @@
 <body>
     <h1>XDR Docker Relay</h1>
     <button id="save">Save session for Claude</button>
-    <p class="hint">Saves this window's Defender portal session to a file. Save it in your
-        Workbench repo's <code>.xdr-agent</code> folder; Claude takes it from there.</p>
+    <p class="hint">Saves this window's Defender portal session to a file, for Claude running on
+        <strong>this computer</strong>. Save it in your Workbench repo's <code>.xdr-agent</code>
+        folder. Never upload it or paste it into a chat.</p>
     <hr>
-    <label for="code">Pairing code (from Connect-XdrByBrowserExtension)</label>
+    <p class="listener" id="listener">Looking for the standup on this computer...</p>
+    <label for="code">Pairing code (printed by Start-XdrWorkbench.ps1)</label>
     <input id="code" type="text" autocomplete="off" spellcheck="false">
-    <label for="port">Container relay port</label>
-    <input id="port" type="number" value="8787">
+    <label for="port">Relay port (leave blank to find it)</label>
+    <input id="port" type="number" min="1024" max="65535" placeholder="auto: 8787-8796">
     <button id="send">Relay session to container</button>
     <p class="status" id="status"></p>
     <p class="warn">
-        Sends your current Defender XDR sign-in cookie to 127.0.0.1 only, and only for one
-        use. Only paste in a pairing code you just generated yourself, for a container you
-        run and trust on this machine.
+        Sends your current Defender XDR sign-in cookie to 127.0.0.1 or localhost on this
+        computer only, and only to a Workbench standup that accepts your pairing code. A relay
+        cannot reach Claude running in the cloud.
     </p>
     <p class="warn">
-        Sign in to security.microsoft.com in an <strong>Incognito window</strong>, with
-        "Allow in Incognito" enabled for this extension (see its Details page). A cookie
-        from your normal, already-signed-in profile is often rejected by Azure AD with
-        "session information is not sufficient for SSO". Once signed in there, this popup
-        can be opened from either window.
+        Click this from the Chrome window the standup opened, in your normal profile. Incognito
+        windows carry no device identity, so accounts with a compliant-device policy fail
+        multi-tenant hunting (AADSTS53000) from them.
     </p>
     <script src="popup.js"></script>
 </body>
