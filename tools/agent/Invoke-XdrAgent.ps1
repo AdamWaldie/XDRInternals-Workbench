@@ -305,6 +305,10 @@ function Resolve-XdrHuntRoute {
         if ($key -eq 'TenantIds') {
             $tp = @('TenantId', 'TenantIds') | Where-Object { $direct.ContainsKey($_) } | Select-Object -First 1
             if ($tp) { $mapped[$tp] = $ids[0] }
+        } elseif ($key -eq 'MinutesAgo' -and $direct.ContainsKey('StartTime') -and -not $direct.ContainsKey('MinutesAgo')) {
+            # Same window, expressed as a start time.
+            $end = if ($Bound.ContainsKey('EndTime')) { [datetime]$Bound['EndTime'] } else { Get-Date }
+            $mapped['StartTime'] = $end.AddMinutes(-[int]$Bound['MinutesAgo'])
         } elseif ($direct.ContainsKey($key) -or $common -contains $key) { $mapped[$key] = $Bound[$key] }
         else { Write-Stderr "[xdr-agent] Hunt stays on the MTO endpoint: Invoke-XdrAdvancedHunting has no -$key."; return $mto }
     }

@@ -1,4 +1,4 @@
-function Invoke-XdrAdvancedHunting {
+﻿function Invoke-XdrAdvancedHunting {
     <#
     .SYNOPSIS
         Runs a read-only Advanced Hunting query against the session's own tenant (direct mode).
