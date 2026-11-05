@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Hands the current XDRInternals session to Claude's agent wrapper.
 
@@ -85,11 +85,22 @@ if (-not $sccAuth) {
     throw "The current session has no sccauth cookie, so it can't be handed off. Reconnect and try again."
 }
 
+# The multi-tenant portal session, when the relay carried one (see Initialize-XdrMtoSession).
+$mtoSession = & $module { $script:mtoSession }
+$mtoSccAuth = $null; $mtoXsrf = $null
+if ($mtoSession) {
+    $mtoCookies = $mtoSession.Cookies.GetCookies('https://mto.security.microsoft.com')
+    $mtoSccAuth = $mtoCookies['sccauth'].Value
+    $mtoXsrf = $mtoCookies['xsrf-token'].Value
+}
+
 # Forced fetch so the saved identity reflects the live session, not a cached tenant.
 $tenantContext = Get-XdrTenantContext -Force
 $record = [ordered]@{
     SccAuth    = $sccAuth
     Xsrf       = $xsrf
+    MtoSccAuth = $mtoSccAuth
+    MtoXsrf    = $mtoXsrf
     TenantId   = $tenantContext.AuthInfo.TenantId
     TenantName = $tenantContext.AuthInfo.TenantName
     Account    = $tenantContext.AuthInfo.UserName
@@ -124,4 +135,5 @@ Write-Host "  Tenant:    $($record.TenantName)"
 Write-Host "  Account:   $($record.Account)"
 Write-Host "  Tenant ID: $($record.TenantId)"
 Write-Host "  File:      $Path"
+Write-Host "  MTO:       $(if ($mtoSccAuth) { 'multi-tenant portal session included' } else { 'no multi-tenant portal session' })"
 Write-Host "Run this script with -Clear when the investigation is done."

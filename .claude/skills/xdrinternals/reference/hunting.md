@@ -13,7 +13,7 @@ pwsh -NoProfile -File tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId <id> -Comm
 - Large results (timelines, `-All`, hunting): `-OutFile <path>.json`. Stdout then carries only `{Count, OutFile, Properties}`. Without it stdout shows at most `-MaxItems` (default 100).
 - `-Format Table` or `-Format List` for quick looks.
 - Each call is a fresh process. Do fetch, filter and project in one script.
-- Exit codes: `0` ok, `1` threw, `2` partial (non-terminating errors, or a tenant not searched), `3` refused by the write guard, `4` no or stale session, `5` session tenant mismatch, `6` not PowerShell 7, `7` tenant guard (see `multi-tenant.md`). On `4`, or a 401/403, stop and ask the user to rerun the standup. Don't retry in a loop.
+- Exit codes: `0` ok, `1` threw, `2` partial (non-terminating errors, or a tenant not searched), `3` refused by the write guard, `4` no or stale session, `5` session tenant mismatch, `6` not PowerShell 7, `7` tenant guard (see `multi-tenant.md`), `8` hunt session timeout (HTTP 440 from a hunting endpoint; see `hunting-outage.md`). On `4`, or a 401/403, stop and ask the user to rerun the standup. On `8`, switch route as `hunting-outage.md` says. Don't retry in a loop.
 
 ## Write guard and response actions
 
@@ -29,7 +29,7 @@ The guard is a safety net, not a sandbox. Don't route around it.
 
 **Every case, in order.**
 
-1. Control: `Get-XdrTenantContext -Force`, then a scoped count that proves the tenant has the data the question needs, e.g. `DeviceInfo | where Timestamp > ago(1d) | summarize Devices = dcount(DeviceId)` with `-TenantIds <case tenant>`.
+1. Control: `Get-XdrTenantContext -Force`, then a scoped count that proves the tenant has the data the question needs, e.g. `DeviceInfo | where Timestamp > ago(1d) | summarize Devices = dcount(DeviceId)` with `-TenantIds <case tenant>` on the MTO route. In direct mode, run it with `Invoke-XdrAdvancedHunting` (`hunting-outage.md`).
 2. Coverage: `Get-XdrTenantWorkloadStatus`, `Get-XdrEndpointDeviceTotals`, and `Get-XdrAdvancedHuntingTableSchema` (tables, `HasData`, retention). The schema call returns 403 for guest analysts in some customer tenants. Fall back to a row-count probe through MTO hunting, which works on the same session:
    ```kql
    union withsource=T isfuzzy=true EntraIdSignInEvents, IdentityLogonEvents, IdentityDirectoryEvents, CloudAppEvents, EmailEvents, UrlClickEvents, DeviceProcessEvents, DeviceFileEvents, DeviceNetworkEvents, DeviceLogonEvents

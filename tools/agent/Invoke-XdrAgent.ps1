@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Runs XDRInternals commands for Claude against the session saved by Save-XdrAgentSession.ps1.
 
@@ -17,7 +17,8 @@
 
         Exit codes: 0 ok, 1 the command threw, 2 non-terminating errors (partial results),
         3 refused by the write guard, 4 no or stale session, 5 tenant mismatch, 7 tenant guard,
-        6 not PowerShell 7.
+        6 not PowerShell 7 (4 also when the portal answers 440 to a non-hunting call), 8 hunt session timeout (HTTP 440 from a hunting endpoint while the
+        portal session still works; see .claude/skills/xdrinternals/reference/hunting-outage.md).
 
     .PARAMETER Command
         PowerShell to run, e.g. "Get-XdrIncident -IncidentId 123".
@@ -225,6 +226,11 @@ if (Test-Path -LiteralPath $repoManifest) {
     Import-Module XDRInternals -WarningAction SilentlyContinue
 }
 Set-XdrConnectionSettings -SccAuth $saved.SccAuth -Xsrf $saved.Xsrf -TenantId $saved.TenantId 6>$null
+# The multi-tenant portal keeps its own sign-in; restore it when the relay carried one.
+$module = Get-Module XDRInternals
+$savedMtoSccAuth = if ($saved.PSObject.Properties['MtoSccAuth']) { $saved.MtoSccAuth } else { $null }
+$savedMtoXsrf = if ($saved.PSObject.Properties['MtoXsrf']) { $saved.MtoXsrf } else { $null }
+& $module { param($s, $x) Initialize-XdrMtoSession -SccAuth $s -Xsrf $x } $savedMtoSccAuth $savedMtoXsrf
 
 # Case lock default: the tenant the standup recorded, unless this call is an explicit estate sweep.
 $caseFile = Join-Path $PSScriptRoot '../../.xdr-agent/case.json'
@@ -268,11 +274,62 @@ function Assert-XdrHuntTenants {
     foreach ($id in $ids) { $null = $global:XdrHuntTenants.Add($id) }
 }
 $global:XdrHuntCmd = Get-Command -Module XDRInternals -Name Invoke-XdrMtoAdvancedHunting -CommandType Function
+# Hunt routing. When the case tenant is the session tenant (direct mode), the single-tenant endpoint
+# on security.microsoft.com answers for exactly that tenant and doesn't depend on the multi-tenant
+# portal session, which a relay may not carry (HTTP 440). So a hunt written for the MTO cmdlet is
+# sent to Invoke-XdrAdvancedHunting when the module has it and its parameters can express the call.
+# XDR_HUNT_ROUTE=mto forces the MTO endpoint.
+$global:XdrDirectHuntCmd = Get-Command -Module XDRInternals -Name Invoke-XdrAdvancedHunting -ErrorAction SilentlyContinue
+$global:XdrSessionTenant = [pscustomobject]@{ Id = "$($saved.TenantId)"; Name = "$($saved.TenantName)" }
+$global:XdrHuntRouteNoted = $false
+function global:Invoke-XdrDirectHuntShim {
+    param ([hashtable]$HuntParameters)
+    # Direct rows don't carry the tenant columns MTO rows do; add them so tenant checks, sidecars and
+    # per-tenant splitting treat both routes alike.
+    & $global:XdrDirectHuntCmd @HuntParameters | ForEach-Object {
+        if ($_ -is [psobject] -and $_ -isnot [string] -and -not $_.PSObject.Properties['TenantId']) {
+            $_ | Add-Member -NotePropertyName TenantId -NotePropertyValue $global:XdrSessionTenant.Id -PassThru | Add-Member -NotePropertyName TenantName -NotePropertyValue $global:XdrSessionTenant.Name -PassThru
+        } else { $_ }
+    }
+}
+function Resolve-XdrHuntRoute {
+    param ($Bound)
+    $mto = $global:XdrHuntCmd
+    if ($env:XDR_HUNT_ROUTE -eq 'mto' -or -not $global:XdrDirectHuntCmd) { return $mto }
+    $ids = @($Bound['TenantIds'] | Where-Object { $_ } | ForEach-Object { "$_".Trim() } | Select-Object -Unique)
+    if ($ids.Count -ne 1 -or $ids[0] -ne $global:XdrSessionTenant.Id) { return $mto }
+    $direct = $global:XdrDirectHuntCmd.Parameters
+    $common = [System.Management.Automation.Cmdlet]::CommonParameters + [System.Management.Automation.Cmdlet]::OptionalCommonParameters
+    $mapped = @{}
+    foreach ($key in @($Bound.Keys)) {
+        if ($key -eq 'TenantIds') {
+            $tp = @('TenantId', 'TenantIds') | Where-Object { $direct.ContainsKey($_) } | Select-Object -First 1
+            if ($tp) { $mapped[$tp] = $ids[0] }
+        } elseif ($key -eq 'MinutesAgo' -and $direct.ContainsKey('StartTime') -and -not $direct.ContainsKey('MinutesAgo')) {
+            # Same window, expressed as a start time.
+            $end = if ($Bound.ContainsKey('EndTime')) { [datetime]$Bound['EndTime'] } else { Get-Date }
+            $mapped['StartTime'] = $end.AddMinutes(-[int]$Bound['MinutesAgo'])
+        } elseif ($direct.ContainsKey($key) -or $common -contains $key) { $mapped[$key] = $Bound[$key] }
+        else { Write-Stderr "[xdr-agent] Hunt stays on the MTO endpoint: Invoke-XdrAdvancedHunting has no -$key."; return $mto }
+    }
+    # The MTO cmdlet defaults to the last 7 days; keep that window on the direct route.
+    if (-not ($Bound.Keys | Where-Object { $_ -in 'DaysAgo', 'MinutesAgo', 'StartTime' })) {
+        if ($direct.ContainsKey('DaysAgo')) { $mapped['DaysAgo'] = 7 }
+        else { Write-Stderr '[xdr-agent] Hunt stays on the MTO endpoint: Invoke-XdrAdvancedHunting has no -DaysAgo for the default 7-day window.'; return $mto }
+    }
+    if (-not $global:XdrHuntRouteNoted) {
+        Write-Stderr "[xdr-agent] Direct mode: hunt sent to Invoke-XdrAdvancedHunting (single-tenant endpoint on security.microsoft.com). XDR_HUNT_ROUTE=mto forces the MTO endpoint."
+        $global:XdrHuntRouteNoted = $true
+    }
+    $Bound.Clear()
+    $Bound['HuntParameters'] = $mapped
+    return (Get-Command -Name Invoke-XdrDirectHuntShim -CommandType Function)
+}
 $huntMeta = [System.Management.Automation.CommandMetadata]::new($global:XdrHuntCmd)
 $huntProxy = [System.Management.Automation.ProxyCommand]::Create($huntMeta)
-$huntProxy = $huntProxy -replace '\$ExecutionContext\.InvokeCommand\.GetCommand\(''Invoke-XdrMtoAdvancedHunting'',[^)]*\)', '$global:XdrHuntCmd'
+$huntProxy = $huntProxy -replace '\$ExecutionContext\.InvokeCommand\.GetCommand\(''Invoke-XdrMtoAdvancedHunting'',[^)]*\)', '(Resolve-XdrHuntRoute -Bound $PSBoundParameters)'
 $huntProxy = $huntProxy -replace '(?m)^begin\s*\r?\n\{', "begin`n{`n    Assert-XdrHuntTenants -Bound `$PSBoundParameters"
-if ($huntProxy -notmatch 'Assert-XdrHuntTenants' -or $huntProxy -notmatch 'global:XdrHuntCmd') {
+if ($huntProxy -notmatch 'Assert-XdrHuntTenants' -or $huntProxy -notmatch 'Resolve-XdrHuntRoute') {
     Write-Stderr 'TENANT GUARD: could not build the hunting proxy. Refusing to run.'
     exit 7
 }
@@ -283,6 +340,30 @@ if ($huntProxy -notmatch 'Assert-XdrHuntTenants' -or $huntProxy -notmatch 'globa
 $global:XdrHuntProxy = [scriptblock]::Create($huntProxy)
 $tenantLeak = @()
 $notSearched = @()
+# HTTP 440 ("Session timeout") from a hunting endpoint: the portal session can still be valid
+# for every other cmdlet. Name it, so the caller switches route instead of re-relaying in a loop.
+$huntTimeout = $false
+$directMode = -not $CaseTenantId -or $CaseTenantId -eq $saved.TenantId
+$hasDirectHunt = [bool](Get-Command -Module XDRInternals -Name Invoke-XdrAdvancedHunting -ErrorAction SilentlyContinue)
+$portalTimeout = $false
+function Write-HuntTimeout([string]$Message) {
+    if ($Message -notmatch '\b440\b|Session ?timeout') { return $false }
+    if ($Message -notmatch '(?i)hunt') {
+        # 440 from a non-hunting call: the portal session itself was rejected.
+        Write-Stderr "PORTAL SESSION TIMEOUT (440): the portal rejected the saved session. Rerun the standup (sign in again and relay)."
+        $script:portalTimeout = $true
+        return $false
+    }
+    if ($Message -match 'MTO') {
+        $next = if ($directMode -and $hasDirectHunt) { 'This case is in direct mode: hunt with Invoke-XdrAdvancedHunting, which uses the single-tenant endpoint on security.microsoft.com.' }
+        elseif ($directMode) { 'This checkout has no Invoke-XdrAdvancedHunting (direct route); update it, or use the portal fallback.' }
+        else { 'This is an MTO case, so the direct route would answer for the session tenant. Use the portal fallback, or a direct-mode standup in the customer tenant.' }
+        Write-Stderr "HUNT SESSION TIMEOUT (440): the multi-tenant endpoint (mto.security.microsoft.com) rejected the relayed session. $next Don't re-relay in a loop. See reference/hunting-outage.md."
+    } else {
+        Write-Stderr "HUNT SESSION TIMEOUT (440): the hunting endpoint rejected the session. Check Get-XdrTenantContext -Force; if that fails too, the portal session has expired: rerun the standup. See reference/hunting-outage.md."
+    }
+    return $true
+}
 
 # Run the command, keeping only real output on stdout
 $results = New-Object System.Collections.Generic.List[object]
@@ -305,6 +386,7 @@ try {
             }
         } elseif ($item -is [System.Management.Automation.ErrorRecord]) {
             Write-Stderr "[error] $item"
+            if (Write-HuntTimeout "$item") { $huntTimeout = $true }
             $exitCode = 2
         } else {
             # A hunt row carries TenantId and TenantName. Refuse any row from a tenant no hunt named.
@@ -321,7 +403,10 @@ try {
         Write-Stderr "The portal session looks expired or lacks permission. Ask the user to reconnect and rerun Save-XdrAgentSession.ps1."
     }
     $exitCode = if ($message -match 'TENANT GUARD') { 7 } else { 1 }
+    if ($exitCode -ne 7 -and (Write-HuntTimeout $message)) { $huntTimeout = $true }
 }
+if ($huntTimeout -and $exitCode -ne 7) { $exitCode = 8 }
+elseif ($portalTimeout -and $exitCode -ne 7) { $exitCode = 4 }
 
 if ($tenantLeak) {
     Write-Stderr "TENANT GUARD: rows came back from tenants no hunt named: $(($tenantLeak | Select-Object -Unique) -join ', '). All results discarded."
@@ -329,13 +414,19 @@ if ($tenantLeak) {
     $exitCode = 7
 }
 
-# The portal rotates XSRF tokens; keep the saved copy current for the next call.
-$module = Get-Module XDRInternals
+# The portal rotates XSRF tokens; keep the saved copies current for the next call.
+$changed = $false
 $currentXsrf = (& $module { $script:session }).Cookies.GetCookies('https://security.microsoft.com')['xsrf-token'].Value
-if ($currentXsrf -and $currentXsrf -ne $saved.Xsrf) {
-    $saved.Xsrf = $currentXsrf
-    $saved | ConvertTo-Json | Set-Content -LiteralPath $SessionPath -Encoding utf8
+if ($currentXsrf -and $currentXsrf -ne $saved.Xsrf) { $saved.Xsrf = $currentXsrf; $changed = $true }
+$mtoSessionNow = & $module { $script:mtoSession }
+if ($mtoSessionNow) {
+    $currentMtoXsrf = $mtoSessionNow.Cookies.GetCookies('https://mto.security.microsoft.com')['xsrf-token'].Value
+    if ($currentMtoXsrf -and $currentMtoXsrf -ne $savedMtoXsrf) {
+        $saved | Add-Member -NotePropertyName MtoXsrf -NotePropertyValue $currentMtoXsrf -Force
+        $changed = $true
+    }
 }
+if ($changed) { $saved | ConvertTo-Json | Set-Content -LiteralPath $SessionPath -Encoding utf8 }
 
 # Emit results. Use ToArray(): in PowerShell 7.4, @() around a generic List breaks ConvertTo-Json
 # ("Argument types do not match").

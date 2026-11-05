@@ -1,6 +1,6 @@
 # Advanced Hunting, Data Lake and XSPM hunting
 
-13 cmdlets. Run them through `tools/agent/Invoke-XdrAgent.ps1`. Guard and tenant rules are in `../../SKILL.md`.
+14 cmdlets. Run them through `tools/agent/Invoke-XdrAgent.ps1`. Guard and tenant rules are in `../../SKILL.md`.
 
 ## ConvertTo-XdrEncodedAdvancedHuntingQuery
 
@@ -284,6 +284,38 @@ Get-XdrDatalakeTableSchema -Force
 ```
 
 Forces a fresh retrieval of the database entities schema, bypassing the cache.
+
+## Invoke-XdrAdvancedHunting
+
+Guard: `read`
+
+Runs a read-only Advanced Hunting query against the session's own tenant (direct mode).
+
+Posts the query to the same single-tenant endpoint the Defender portal uses
+(security.microsoft.com/apiproxy/hunting/huntingQueryExecutorService/queryExecutor/v1/external).
+It does not go through mto.security.microsoft.com, so it keeps working when the MTO session
+times out (HTTP 440) while the portal session is still valid. It only ever queries the tenant
+the session is signed in to, and stops if -TenantId is not that tenant.
+
+```powershell
+Invoke-XdrAdvancedHunting -QueryText <String> -TenantId <String> [-DaysAgo <Int32>] [-EndTime <DateTime>] [-MaxRecordCount <Int32>]
+Invoke-XdrAdvancedHunting -QueryText <String> -TenantId <String> -StartTime <DateTime> [-EndTime <DateTime>] [-MaxRecordCount <Int32>]
+```
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| -QueryText | String | yes |  | The KQL query. |
+| -TenantId | String | yes |  | The tenant the caller expects. The call stops if the session tenant differs. |
+| -DaysAgo | Int32 |  | 30 | Look-back in days (default 30). Ignored when -StartTime is given. |
+| -StartTime | DateTime | yes |  | Window start (UTC). |
+| -EndTime | DateTime |  | (Get-Date) | Window end (UTC, default now). |
+| -MaxRecordCount | Int32 |  | 100000 | Row cap (default 100000). |
+
+Example 1:
+
+```powershell
+Invoke-XdrAdvancedHunting -TenantId 'ce37246c-a47b-4e72-ac75-1f10b15a9379' -QueryText 'DeviceInfo | take 5'
+```
 
 ## Invoke-XdrHuntingQueryValidation
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Claude-side standup: turns the session file the relay extension saved into a working,
         tenant-checked Workbench session, with the case lock and case folder.
@@ -18,7 +18,8 @@
           5. Empties the drop file so the token exists in one place only.
           6. Prints a JSON "Ready" record.
 
-        Exit codes: 0 ready, 4 no usable drop or the portal rejected it, 7 customer not reachable.
+        Exit codes: 0 ready, 2 session saved but the control hunt failed (the Ready record names
+        the cause and the fix), 4 no usable drop or the portal rejected it, 7 customer not reachable.
 
     .EXAMPLE
         pwsh -NoProfile -File tools/agent/Import-XdrSessionDrop.ps1 -Tenant "<customer>" -Case INC12345
@@ -54,6 +55,9 @@ if ((Test-XdrPathGitIgnored -Path $dropFile.FullName) -eq $false) { Stop-With 4 
 try { $target = Resolve-XdrTenant -Tenant $Tenant } catch { Stop-With 7 $_.Exception.Message }
 Import-Module (Join-Path $repoRoot 'XDRInternals/XDRInternals.psd1') -Force -WarningAction SilentlyContinue
 Set-XdrConnectionSettings -SccAuth $drop.sccAuth -Xsrf $drop.xsrf 6>$null
+$dropMtoSccAuth = if ($drop.PSObject.Properties['mtoSccAuth']) { $drop.mtoSccAuth } else { $null }
+$dropMtoXsrf = if ($drop.PSObject.Properties['mtoXsrf']) { $drop.mtoXsrf } else { $null }
+& (Get-Module XDRInternals) { param($s, $x) Initialize-XdrMtoSession -SccAuth $s -Xsrf $x } $dropMtoSccAuth $dropMtoXsrf
 try { $ctx = Get-XdrTenantContext -Force } catch { Stop-With 4 "REJECTED: the portal didn't accept the saved session ($($_.Exception.Message)). Sign in again in the Incognito window and save a fresh session." }
 $liveId = "$($ctx.AuthInfo.TenantId)"; $liveName = "$($ctx.AuthInfo.TenantName)"; $account = "$($ctx.AuthInfo.UserName)"
 if (-not $liveId) { Stop-With 4 'REJECTED: the portal returned no tenant for this session. Sign in again and save a fresh session.' }
@@ -73,6 +77,7 @@ $sessionPath = Join-Path $agentDir 'session.json'
 if ((Test-XdrPathGitIgnored -Path $sessionPath) -eq $false) { Stop-With 4 "REFUSED: $sessionPath would be tracked by git." }
 [ordered]@{
     SccAuth = $drop.sccAuth; Xsrf = $(if ($xsrfNow) { $xsrfNow } else { $drop.xsrf })
+    MtoSccAuth = $dropMtoSccAuth; MtoXsrf = $dropMtoXsrf
     TenantId = $liveId; TenantName = $liveName; Account = $account
     SavedAt = (Get-Date).ToUniversalTime().ToString('o'); Source = "relay extension file ($($drop.source))"
 } | ConvertTo-Json | Set-Content -LiteralPath $sessionPath -Encoding utf8
@@ -122,12 +127,27 @@ foreach ($f in $drops) {
     try { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop } catch { Set-Content -LiteralPath $f.FullName -Value '{}' -Encoding utf8 }
 }
 
-# 6. Ready
+# 6. Prove hunting works before calling it ready, and record the route in the case lock.
+$hunt = Invoke-XdrHuntCheck -CaseTenantId $target.TenantId -CaseTenantName $target.Name
+$mtoProbe = if ($hunt.Ok -and $hunt.Route -eq 'direct') { Invoke-XdrHuntCheck -CaseTenantId $target.TenantId -CaseTenantName $target.Name -ForceMto } else { $null }
+$mtoRoute = if ($hunt.Route -eq 'mto') { $hunt.Kind } elseif ($mtoProbe) { $mtoProbe.Kind } else { 'not checked' }
+$caseFile = Join-Path $agentDir 'case.json'
+$lock = Get-Content -LiteralPath $caseFile -Raw | ConvertFrom-Json
+foreach ($pair in @(@('HuntRoute', $(if ($hunt.Ok) { $hunt.Route } else { 'none' })), @('HuntCheck', $hunt.Kind), @('MtoRoute', $mtoRoute), @('CheckedUtc', (Get-Date).ToUniversalTime().ToString('o')))) {
+    $lock | Add-Member -NotePropertyName $pair[0] -NotePropertyValue $pair[1] -Force
+}
+$lock | ConvertTo-Json | Set-Content -LiteralPath $caseFile -Encoding utf8
+
+# 7. Ready
 Out-Ready ([ordered]@{
-    Status = 'ready'; Account = $account
+    Status = $(if ($hunt.Ok) { 'ready' } else { 'hunting-failed' }); Account = $account
+    HuntRoute = $(if ($hunt.Ok) { $hunt.Route } else { $null }); HuntCheck = $hunt.Kind; HuntDetail = $hunt.Reason
+    Fix = $(if ($hunt.Fix) { $hunt.Fix } else { $null }); MtoRoute = $mtoRoute
+    MtoSession = [bool]$dropMtoSccAuth
     SessionTenant = "$liveName ($liveId)"; CaseTenant = "$($target.Name) ($($target.TenantId))"; Mode = $mode
     MtoNote = $(if ($mode -eq 'mto') { 'Hunting only: incidents, devices, timelines and other entity cmdlets are refused, because they would answer for the session tenant.' } else { $null })
     DropSource = $drop.source; DropSavedUtc = $drop.savedAtUtc
     CaseFolder = $folder; ExpectTenantId = $liveId
     Next = 'pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json'
 })
+if (-not $hunt.Ok) { exit 2 }

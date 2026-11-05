@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Diagnoses the Workbench setup and the current session, and says how to fix each problem.
 
@@ -16,7 +16,11 @@
         Relay port to check. Default 8787.
 
     .PARAMETER Live
-        Also run Get-XdrTenantContext through tools/agent/Invoke-XdrAgent.ps1.
+        Also run Get-XdrTenantContext through tools/agent/Invoke-XdrAgent.ps1, and a control hunt
+        against the case tenant on the route the case mode uses: direct mode hunts with
+        Invoke-XdrAdvancedHunting (security.microsoft.com) when the module has it and probes the
+        MTO route separately; MTO mode hunts with Invoke-XdrMtoAdvancedHunting. Without -Live no
+        hunting endpoint is called, so a clean result says nothing about hunting.
 
     .PARAMETER Json
         Emit results as JSON (for an agent to parse) instead of a table.
@@ -86,7 +90,8 @@ foreach ($s in $sessions) {
         if (-not $j.SccAuth) { Add-Check 'session' 'WARN' "$s is cleared" 'Run the standup.'; continue }
         $age = ((Get-Date).ToUniversalTime() - ([datetime]::Parse($j.SavedAt, [cultureinfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)).ToUniversalTime()).TotalHours
         $st = if ($age -gt $maxAge) { 'FAIL' } else { 'OK' }
-        Add-Check 'session' $st ("{0}: {1} ({2}) as {3}, saved {4:N1} h ago" -f $s, $j.TenantName, $j.TenantId, $j.Account, $age) $(if ($st -eq 'FAIL') { "Older than the wrapper's $maxAge h limit. Rerun the standup." })
+        $mtoNote = if ($j.PSObject.Properties['MtoSccAuth'] -and $j.MtoSccAuth) { 'with multi-tenant portal session' } else { 'no multi-tenant portal session' }
+        Add-Check 'session' $st ("{0}: {1} ({2}) as {3}, saved {4:N1} h ago, {5}" -f $s, $j.TenantName, $j.TenantId, $j.Account, $age, $mtoNote) $(if ($st -eq 'FAIL') { "Older than the wrapper's $maxAge h limit. Rerun the standup." })
     } catch { Add-Check 'session' 'FAIL' "$s unreadable: $($_.Exception.Message)" 'Clear it with Save-XdrAgentSession.ps1 -Clear -InRepo and rerun the standup.' }
     $ig = Test-XdrPathGitIgnored -Path $s
     if ($ig -eq $false) { Add-Check 'session ignore' 'FAIL' "$s would be tracked by git" 'Add its folder to .gitignore now, and clear the session.' }
@@ -125,28 +130,28 @@ if ($Live) {
     $pw = (Get-Process -Id $PID).Path
     $out = & $pw -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-XdrAgent.ps1') -Format List -Command '(Get-XdrTenantContext -Force).AuthInfo | Select-Object TenantName, TenantId, UserName' 2>&1
     $code = $LASTEXITCODE
-    $meaning = @{ 0 = 'ok'; 1 = 'command threw'; 2 = 'partial'; 4 = 'no or stale session'; 5 = 'tenant mismatch'; 6 = 'not PowerShell 7' }[$code]
+    $meaning = @{ 0 = 'ok'; 1 = 'command threw'; 2 = 'partial'; 4 = 'no or stale session'; 5 = 'tenant mismatch'; 6 = 'not PowerShell 7'; 7 = 'tenant guard'; 8 = 'hunt session timeout' }[$code]
     $text = ($out | Out-String).Trim() -replace '\s+', ' '
     if ($code -eq 0) { Add-Check 'live call' 'OK' $text }
     else { Add-Check 'live call' 'FAIL' "exit $code ($meaning): $($text.Substring(0, [Math]::Min(300, $text.Length)))" $(if ($text -match '401|403') { 'Session expired or no portal access in that tenant. Rerun the standup.' } else { 'See the wrapper message.' }) }
 }
 
-# Control hunt: proves the whole chain (session, relay, MTO, case lock) returns data for the case tenant.
+# Control hunt: proves the whole chain (session, relay, route, case lock) returns data for the case tenant.
 $caseLock = if (Test-Path $caseFile) { try { Get-Content $caseFile -Raw | ConvertFrom-Json } catch { $null } }
+if ($caseLock.CaseTenantId -and -not $Live) {
+    Add-Check 'hunting' 'SKIP' 'Not tested: without -Live no hunting endpoint is called' 'Run ./tools/agent/Test-XdrWorkbench.ps1 -Live before hunting; it runs a control hunt on the route this case uses.'
+}
 if ($Live -and $caseLock.CaseTenantId) {
-    $case = $caseLock
-    $pw = (Get-Process -Id $PID).Path
-    $q = "Invoke-XdrMtoAdvancedHunting -TenantIds '$($case.CaseTenantId)' -DaysAgo 1 -QueryText 'DeviceInfo | where Timestamp > ago(1d) | summarize Devices = dcount(DeviceId)'"
-    $errFile = [System.IO.Path]::GetTempFileName()
-    $out = & $pw -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-XdrAgent.ps1') -Command $q 2>$errFile
-    $code = $LASTEXITCODE
-    $errText = Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
-    $rows = @(); try { $rows = @(($out | Out-String) | ConvertFrom-Json) } catch { }
-    $hit = $rows | Where-Object { "$($_.TenantId)" -eq $case.CaseTenantId } | Select-Object -First 1
-    if ($code -eq 0 -and $hit -and $hit.Devices -gt 0) { Add-Check 'control hunt' 'OK' "$($hit.TenantName): $($hit.Devices) devices reporting in the last day" }
-    elseif ($code -eq 0 -and $hit) { Add-Check 'control hunt' 'WARN' "$($hit.TenantName) answered but no devices reported in the last day" 'Check Defender for Endpoint onboarding for this customer before relying on endpoint hunts.' }
-    elseif ($errText -match 'AADSTS53000') { Add-Check 'control hunt' 'FAIL' "Hunting refused: AADSTS53000 (Conditional Access requires a compliant device)" 'The session came from a window without device identity (usually Incognito). Rerun the standup without -Incognito, signing in from your normal Chrome profile.' }
-    else { Add-Check 'control hunt' 'FAIL' "exit $code, no rows for case tenant $($case.CaseTenantName) ($($case.CaseTenantId))" $(switch ($code) { 2 { 'Tenant not searched: satisfy the MFA or Conditional Access challenge for this customer in the portal, then rerun.' } 4 { 'No or stale session: rerun the standup.' } 7 { 'Tenant guard: the case lock and the session disagree. Rerun the standup for the case customer.' } default { 'Rerun with the wrapper directly to see the error.' } }) }
+    # The wrapper routes the control hunt (direct endpoint in direct mode when the module has it).
+    $hunt = Invoke-XdrHuntCheck -CaseTenantId $caseLock.CaseTenantId -CaseTenantName $caseLock.CaseTenantName
+    $status = if ($hunt.Kind -eq 'ok') { 'OK' } elseif ($hunt.Ok) { 'WARN' } else { 'FAIL' }
+    Add-Check 'control hunt' $status $(if ($hunt.Ok) { $hunt.Reason } else { "$($hunt.Kind) on the $($hunt.Route) route: $($hunt.Reason)" }) $hunt.Fix
+    # In direct mode the MTO route is only needed for estate sweeps; report it, but don't fail on it.
+    if ($hunt.Route -eq 'direct') {
+        $mto = Invoke-XdrHuntCheck -CaseTenantId $caseLock.CaseTenantId -CaseTenantName $caseLock.CaseTenantName -ForceMto
+        if ($mto.Ok) { Add-Check 'mto hunt' 'OK' 'Multi-tenant endpoint answers (estate sweeps available)' }
+        else { Add-Check 'mto hunt' 'WARN' "Multi-tenant endpoint: $($mto.Kind). $($mto.Reason)" "Case hunting is unaffected. For estate sweeps: $($mto.Fix)" }
+    }
 }
 
 if ($Json) { $results | ConvertTo-Json -Depth 3 }

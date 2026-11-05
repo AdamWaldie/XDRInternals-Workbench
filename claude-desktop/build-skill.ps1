@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Packages the Claude Chat/Cowork skill as dist/xdrinternals-skill.zip for upload.
 

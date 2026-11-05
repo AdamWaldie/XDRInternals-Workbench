@@ -24,6 +24,7 @@ Generated from the module's comment-based help by `tools/agent/Build-XdrUsageInd
 | Get-XdrAdvancedHuntingUserHistory | read | usage/hunting.md | Retrieves Advanced Hunting user history from Microsoft Defender XDR. |
 | Get-XdrDatalakeDatabase | read | usage/hunting.md | Retrieves databases from Microsoft Defender XDR datalake. |
 | Get-XdrDatalakeTableSchema | read | usage/hunting.md | Retrieves database entities schema from Microsoft Defender XDR datalake. |
+| Invoke-XdrAdvancedHunting | read | usage/hunting.md | Runs a read-only Advanced Hunting query against the session's own tenant (direct mode). |
 | Invoke-XdrHuntingQueryValidation | read | usage/hunting.md | Validates an Advanced Hunting query for custom detection rules in Microsoft Defender XDR. |
 | Invoke-XdrMtoAdvancedHunting | read | usage/hunting.md | Executes an Advanced Hunting query across multiple tenants in MTO (Multi-Tenant Organization). |
 | Invoke-XdrXspmHuntingQuery | read | usage/hunting.md | Executes a hunting query against the Microsoft Defender XDR XSPM attack surface API. |
