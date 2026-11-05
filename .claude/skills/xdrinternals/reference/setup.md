@@ -110,7 +110,9 @@ Popup messages and what they mean:
 | `Enter the pairing code shown by Connect-XdrByBrowserExtension.` | Code box empty | Paste the code from PowerShell |
 | `No Defender XDR or Entra sign-in cookies found in any cookie store` | Not signed in, or the extension isn't allowed in incognito | Sign in in the standup's window and wait for the portal; with `-Incognito`, turn on Allow in Incognito |
 | `Found Entra sign-in cookie ... (portal cookie not present)` | Signed in to Entra but the Defender portal hasn't loaded | Open security.microsoft.com in that window, wait for it to load, relay again |
-| `Failed: Failed to fetch` | Nothing listening on that port: standup not running, timed out, wrong port, or the container started without `--service-ports` | Rerun the standup and relay within 5 minutes, with matching ports |
+| `No standup is waiting on this computer` / `Nothing on this computer is waiting for a relay` (1.3+) | Standup not running in PowerShell 7 on this computer, its window closed, or Claude is in a cloud session | Run the standup on this computer; in a cloud session, move to a Local Claude Code session |
+| `Relay not accepted: the pairing code does not match` (1.3+) | Code from an earlier run, or mistyped | Copy the latest code from the PowerShell window |
+| `Failed: Failed to fetch` (1.2 and older) | Nothing listening on that port | Reload the extension to 1.3, which names the cause; then as above |
 | `Failed: Container rejected the relay (HTTP 401)` or similar | Wrong or reused pairing code | Rerun the standup for a new code |
 | `Session relayed from a regular window` | Another window's session was used | Close that window, rerun the standup, relay again from the window it opened |
 

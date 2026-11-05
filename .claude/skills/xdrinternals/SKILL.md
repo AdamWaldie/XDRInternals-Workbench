@@ -14,6 +14,16 @@ Two roles, never mixed:
 
 ## The flow
 
+### Step 0. Check where Claude runs (Claude)
+
+The Workbench works only where Claude runs on the analyst's own computer: Claude Code or Codex in the repo folder. The relay posts to 127.0.0.1 on that computer, and the saved session and every query stay in that checkout. Check first:
+
+```bash
+echo "${CLAUDE_CODE_REMOTE:-local}"
+```
+
+If it prints `true`, this is a Claude Code cloud session. Stop here and say, in one message: this conversation runs in the cloud, so it can't reach the relay, the session or the portal; open the Claude desktop app, start a new Claude Code session set to **Local** on the `XDRInternals-Workbench` folder, and ask again there. Don't give the standup steps, don't list commands for the user to run and paste back, and don't ask for the session file. That manual loop is what this check prevents. The agent scripts enforce the same thing: the wrapper exits `9`, and the standup, `Import-XdrSessionDrop.ps1` and `Test-XdrWorkbench.ps1` (`where` row) refuse.
+
 ### Step 1. Find the repo (Claude)
 
 Look through the folders connected to this session (`get_device_info`); each mounts at `$HOME/mnt/<folder name>` in the device shell. The repo is the folder holding both `tools/agent/Invoke-XdrAgent.ps1` and `XDRInternals/XDRInternals.psd1`:
@@ -47,7 +57,7 @@ Send this, filled in with the repo path, customer and case:
 1. Open **PowerShell 7**, not Windows PowerShell. Start menu > "PowerShell 7", or type `pwsh` in any terminal. The first line of the window reads `PowerShell 7.x`; if it says `Windows PowerShell` (version 5.1), close it, because the module and scripts don't run there. Then `cd "<repo>"` (for example `cd "C:\Users\AdamW\OneDrive\Documents\GitHub\XDRInternals-Workbench"`).
 2. Run `./tools/agent/Start-XdrWorkbench.ps1 -Tenant "<customer>" -Case "<ref>"`. It opens a new Chrome window with two tabs, the customer's Advanced Hunting page and the multi-tenant portal (`mto.security.microsoft.com`), and prints a pairing code.
 3. In that window, sign in if asked and wait for both tabs to load (the multi-tenant tab shows a tenant list).
-4. Click the **XDR Docker Relay** extension icon (version 1.2 or later), paste the pairing code, keep port 8787, and click **Relay session to container**. Do this within 5 minutes of the code appearing. The popup says whether the multi-tenant session came too.
+4. Click the **XDR Docker Relay** extension icon (version 1.3 or later), paste the pairing code, and click **Relay session to container**. The popup shows whether it can see the standup and how long the code has left; leave the port blank and it finds it. If the 5 minutes run out, the standup offers a new code. The popup says whether the multi-tenant session came too.
 5. The script then runs a control hunt. If it fails, it names the cause and the fix (sign in again, complete an MFA prompt, open the multi-tenant tab), waits for Enter, and relays or retries itself, up to three times.
 6. At **Ready** it prints the session, case and hunt-check result, then copy-paste commands for when something goes wrong: check the session (`Test-XdrWorkbench.ps1 -Live`), relay again into the open portal window (`-NoBrowser`), start again with a fresh window, and end the session (`Stop-XdrWorkbench.ps1`). The user tells Claude it's ready; there is nothing to paste back. If it ends with `Hunting: FAILED`, it prints a `Fix:` line and exits 2: the user applies the fix and runs the relay-again command before anything is queried.
 
@@ -56,7 +66,7 @@ Use the normal Chrome profile, not Incognito. Cybanetix analyst accounts are und
 First time on a machine, add before step 1:
 - **PowerShell 7:** `winget install Microsoft.PowerShell`.
 - **Relay extension:** in Chrome open `chrome://extensions`, turn on Developer mode, click **Load unpacked**, pick `<repo>\chrome-ext`, and pin the icon. If it's already loaded, click its reload arrow after a repo update.
-- **Port reservation** (in an elevated PowerShell, once): `netsh http add urlacl url=http://+:8787/ user="$env:USERDOMAIN\$env:USERNAME"`.
+- **Port reservation** (optional, in an elevated PowerShell, once): `netsh http add urlacl url=http://+:8787/ user="$env:USERDOMAIN\$env:USERNAME"`. Without it the listener binds to localhost, which the extension also finds. "Error: 183" means it already exists.
 
 The script checks the session's tenant against the customer. If the portal landed in another tenant that has the customer in its MTO list, it sets an MTO case lock automatically: hunting works, and single-tenant cmdlets are refused because they would answer for the other tenant. If the customer isn't reachable, nothing is saved; the user switches to the customer in the portal and reruns.
 
@@ -82,7 +92,7 @@ pwsh -NoProfile -File tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId <session t
 - The wrapper picks the endpoint. In **direct mode** (session tenant = case tenant), it sends the hunt to `Invoke-XdrAdvancedHunting`, the single-tenant endpoint on security.microsoft.com, when the module has that cmdlet and it supports the parameters used, and says so on stderr. Rows still carry `TenantId` and `TenantName`. In **MTO mode**, it uses the multi-tenant endpoint with the relayed multi-tenant session, then the main session. `XDR_HUNT_ROUTE=mto` forces the multi-tenant endpoint.
 - Queries can come from the user, a document, or other skills (`kql-engineer`, `threat-hunting`, `defender-log-sources` for table and field maps). Adapt them to Defender Advanced Hunting tables. `Timestamp`, not `TimeGenerated`, and `EntraIdSignInEvents`, not `AADSignInEventsBeta`. Sentinel-only tables need a workspace (`-SelectedWorkspaces`).
 - Before hunting, run a control and coverage check, so a "no results" means something. Afterwards, record each query, its window and row count in the case notes.
-- Exit codes: `0` ok, `2` partial or a tenant not searched, `3` write guard, `4` session missing, stale or rejected by the portal (repeat step 4), `5` wrong session tenant, `7` tenant guard (stop and confirm the customer), `8` hunt session timeout (HTTP 440 from a hunting endpoint while the session still works). On `8`, follow `reference/hunting-outage.md`: switch route, or use the portal fallback. Don't re-relay in a loop.
+- Exit codes: `0` ok, `2` partial or a tenant not searched, `3` write guard, `4` session missing, stale or rejected by the portal (repeat step 4), `5` wrong session tenant, `7` tenant guard (stop and confirm the customer), `8` hunt session timeout (HTTP 440 from a hunting endpoint while the session still works), `9` cloud session (go back to step 0). On `8`, follow `reference/hunting-outage.md`: switch route, or use the portal fallback. Don't re-relay in a loop.
 - Cmdlet usage for everything other than hunting: `reference/usage/INDEX.md`. Wrapper options, case order, incident-class table and KQL habits: `reference/hunting.md`. Hunting more than one customer: `reference/multi-tenant.md`. A hunt fails but the session works: `reference/hunting-outage.md`.
 
 ### Step 7. Tear down (Claude, only when asked)
@@ -91,6 +101,7 @@ The session stays until the user asks to end it (the wrapper refuses one older t
 
 ## Rules
 
+- **Local only.** Never run the Workbench by proxy: if Claude can't run the wrapper itself (cloud session, repo not reachable), say why and where to work instead, rather than giving the analyst commands to run and paste back.
 - **One customer per case.** The standup locks hunts to the case customer, directly or through MTO. Hunting several customers happens only when the user asks for an estate sweep; read `reference/multi-tenant.md` first.
 - **Read-only.** The wrapper refuses state changes and response actions. For containment, propose the exact command, target, tenant and reason, and run it with `-AllowWrite` only after the user approves that one action.
 - **The token.** It lives in `<repo>/.xdr-agent/session.json`, git- and docker-ignored. Never open, print, copy or commit it.

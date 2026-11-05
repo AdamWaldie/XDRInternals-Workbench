@@ -13,7 +13,7 @@ pwsh -NoProfile -File tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId <id> -Comm
 - Large results (timelines, `-All`, hunting): `-OutFile <path>.json`. Stdout then carries only `{Count, OutFile, Properties}`. Without it stdout shows at most `-MaxItems` (default 100).
 - `-Format Table` or `-Format List` for quick looks.
 - Each call is a fresh process. Do fetch, filter and project in one script.
-- Exit codes: `0` ok, `1` threw, `2` partial (non-terminating errors, or a tenant not searched), `3` refused by the write guard, `4` no or stale session, `5` session tenant mismatch, `6` not PowerShell 7, `7` tenant guard (see `multi-tenant.md`), `8` hunt session timeout (HTTP 440 from a hunting endpoint; see `hunting-outage.md`). On `4`, or a 401/403, stop and ask the user to rerun the standup. On `8`, switch route as `hunting-outage.md` says. Don't retry in a loop.
+- Exit codes: `0` ok, `1` threw, `2` partial (non-terminating errors, or a tenant not searched), `3` refused by the write guard, `4` no or stale session, `5` session tenant mismatch, `6` not PowerShell 7, `7` tenant guard (see `multi-tenant.md`), `8` hunt session timeout (HTTP 440 from a hunting endpoint; see `hunting-outage.md`), `9` Claude Code cloud session (the Workbench runs only on the analyst's computer; send them to a Local Claude Code session). On `4`, or a 401/403, stop and ask the user to rerun the standup. On `8`, switch route as `hunting-outage.md` says. Don't retry in a loop.
 
 ## Write guard and response actions
 

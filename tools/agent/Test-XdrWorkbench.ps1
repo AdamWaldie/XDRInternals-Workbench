@@ -38,6 +38,11 @@ function Add-Check([string]$Area, [string]$Status, [string]$Detail, [string]$Fix
     $results.Add([pscustomobject]@{ Area = $Area; Status = $Status; Detail = $Detail; Fix = $Fix })
 }
 
+# Where this runs. Everything else assumes the analyst's own computer.
+$cloudMessage = Get-XdrCloudSessionMessage
+if ($cloudMessage) { Add-Check 'where' 'FAIL' 'Claude Code cloud session: no relay, saved session or query can work here' $cloudMessage }
+else { Add-Check 'where' 'OK' "Local ($([Environment]::MachineName))" }
+
 # PowerShell and module
 if ($PSVersionTable.PSVersion.Major -ge 7) { Add-Check 'pwsh' 'OK' "$($PSVersionTable.PSVersion) on $([System.Runtime.InteropServices.RuntimeInformation]::OSDescription)" }
 else { Add-Check 'pwsh' 'FAIL' "$($PSVersionTable.PSVersion)" 'Install PowerShell 7 (winget install Microsoft.PowerShell) and run scripts with pwsh, not powershell.exe.' }
@@ -53,11 +58,11 @@ else { Add-Check 'tenants' 'WARN' 'No tenant list found' 'After a standup, expor
 
 # Relay port and URL reservation
 $busy = @(Get-XdrPortListener -Port $Port)
-if ($busy) { Add-Check 'relay port' 'WARN' "Port $Port in use by $($busy.Process -join ', ') (PID $($busy.Pid -join ', '))" 'Close the earlier listener or use another -Port, set to match in the extension.' }
+if ($busy) { Add-Check 'relay port' 'WARN' "Port $Port in use by $($busy.Process -join ', ') (PID $($busy.Pid -join ', '))" 'The standup moves to the next free port up to 8796 and extension 1.3+ finds it; close the earlier listener if it is a stale standup.' }
 else { Add-Check 'relay port' 'OK' "Port $Port free" }
 if ($IsWindows) {
     if ((netsh http show urlacl url=http://+:$Port/ | Out-String) -match "http://\+:$Port/") { Add-Check 'url reservation' 'OK' "http://+:$Port/ reserved" }
-    else { Add-Check 'url reservation' 'FAIL' "No reservation for http://+:$Port/ (listener fails with 'Access is denied')" "Elevated, once: netsh http add urlacl url=http://+:$Port/ user=`"$env:USERDOMAIN\$env:USERNAME`"" }
+    else { Add-Check 'url reservation' 'WARN' "No reservation for http://+:$Port/; the listener falls back to localhost, which extension 1.3+ finds" "To bind all interfaces, elevated, once: netsh http add urlacl url=http://+:$Port/ user=`"$env:USERDOMAIN\$env:USERNAME`"" }
 }
 
 # Chrome and the relay extension
