@@ -162,6 +162,7 @@
         "Invoke-XdrEndpointDeviceLiveResponseCommand",
         "Invoke-XdrEndpointDevicePolicySync",
         "Invoke-XdrHuntingQueryValidation",
+        "Invoke-XdrAdvancedHunting",
         "Invoke-XdrMtoAdvancedHunting",
         "Invoke-XdrRestMethod",
         "Invoke-XdrXspmHuntingQuery",
