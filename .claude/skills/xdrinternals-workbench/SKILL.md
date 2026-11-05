@@ -1,5 +1,5 @@
 ---
-name: xdrinternals
+name: xdrinternals-workbench
 description: Setup helper and go-between for Microsoft Defender XDR through the XDRInternals module in this repo - Claude finds the repo, works out the customer, gives the user the standup and relay steps, verifies the session (direct or MTO), runs Advanced Hunting queries and cmdlets (incidents, alerts, devices, timelines, identity, Cloud Apps, exposure) from other skills or the user, and tears down. Use whenever the user asks to start or end a Defender session, run a Defender hunt or query, triage an incident or alert, or investigate a device, user, IP, hash or domain in Defender, including when they don't name the module.
 ---
 
@@ -115,7 +115,7 @@ The session stays until the user asks to end it (the wrapper refuses one older t
 
 ## Keeping it current
 
-The source of truth is `<repo>/.claude/skills/xdrinternals/` (this file and `reference/`). The account skill `xdrinternals-workbench` (Claude) and the Codex skill of the same name are built from it, never edited by hand:
+The source of truth is `<repo>/.claude/skills/xdrinternals-workbench/` (this file and `reference/`). The account skill `xdrinternals-workbench` (Claude) and the Codex skill of the same name are built from it, never edited by hand:
 
 ```powershell
 pwsh -NoProfile -File build/Sync-CmdletDocumentation.ps1        # after adding a public function: README, psd1 exports, XDRay mappings

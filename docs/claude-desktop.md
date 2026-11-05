@@ -76,7 +76,7 @@ Node.js is the only dependency; the server has no npm packages.
 
 ## The skill
 
-There is one skill, `xdrinternals-workbench`, kept in `.claude/skills/xdrinternals`. Build it with `./claude-desktop/build-workbench-skill.ps1` and upload `dist/xdrinternals-workbench-skill.zip` in Claude under **Settings → Capabilities → Skills**. The skill tells Claude:
+There is one skill, `xdrinternals-workbench`, kept in `.claude/skills/xdrinternals-workbench`. Build it with `./claude-desktop/build-workbench-skill.ps1` and upload `dist/xdrinternals-workbench-skill.zip` in Claude under **Settings → Capabilities → Skills**. The skill tells Claude:
 
 - which route to use
 - to confirm the tenant first
@@ -84,4 +84,4 @@ There is one skill, `xdrinternals-workbench`, kept in `.claude/skills/xdrinterna
 - where to keep evidence
 - how to report
 
-Claude Code reads the same skill straight from `.claude/skills/xdrinternals`, plus the `xdr-investigator` agent.
+Claude Code reads the same skill straight from `.claude/skills/xdrinternals-workbench`, plus the `xdr-investigator` agent.
