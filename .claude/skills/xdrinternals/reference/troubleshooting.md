@@ -9,7 +9,7 @@ When standup fails, a call misbehaves, or the user asks for help with setup, run
 pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json
 ```
 
-It checks pwsh and the module, the tenant list, the relay port and URL reservation, Chrome and the relay extension (installed, enabled, allowed in incognito), both extension copies, each saved session (tenant, age against the 12-hour limit, git-ignore status, permissions), `.dockerignore`, tracked case data, reachability of security.microsoft.com and mto.security.microsoft.com, and with `-Live` one read-only call through the wrapper. Each failure carries its fix. Run it on the user's machine for the Chrome and Windows checks; in a Linux shell those are skipped. Exit 1 means at least one FAIL.
+It checks pwsh and the module, the tenant list, the relay port and URL reservation, Chrome and the relay extension (installed, enabled; incognito access only matters with `-Incognito`), both extension copies, each saved session (tenant, age against the 12-hour limit, git-ignore status, permissions), `.dockerignore`, tracked case data, reachability of security.microsoft.com and mto.security.microsoft.com, and with `-Live` one read-only call through the wrapper. Each failure carries its fix. Run it on the user's machine for the Chrome and Windows checks; in a Linux shell those are skipped. Exit 1 means at least one FAIL.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |

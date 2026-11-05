@@ -4,7 +4,7 @@
 
     .DESCRIPTION
         Read-only. Checks PowerShell, the module, tenant lists, the relay port and URL
-        reservation, Chrome and the relay extension (installed, enabled, allowed in incognito),
+        reservation, Chrome and the relay extension (installed, enabled; incognito access noted),
         the saved session (where, how old, which tenant, file permissions, git and docker
         ignore status), portal reachability, and git hygiene for case data. With -Live it also
         makes one read-only call through the agent wrapper to prove the session works.
@@ -63,13 +63,13 @@ if ($IsWindows) {
 # Chrome and the relay extension
 if ($IsWindows -or $IsMacOS) {
     $chrome = Find-XdrChrome
-    if ($chrome) { Add-Check 'chrome' 'OK' $chrome } else { Add-Check 'chrome' 'WARN' 'Chrome not found in the usual locations' 'Install Chrome, or open the incognito window yourself.' }
+    if ($chrome) { Add-Check 'chrome' 'OK' $chrome } else { Add-Check 'chrome' 'WARN' 'Chrome not found in the usual locations' 'Install Chrome, or open the portal window yourself and run the standup with -NoBrowser.' }
     $ext = @(Get-XdrRelayExtensionState)
-    if (-not $ext) { Add-Check 'relay extension' 'FAIL' 'XDR Docker Relay not found in any Chrome profile' "chrome://extensions > Developer mode > Load unpacked > $(Join-Path $repoRoot 'chrome-ext'), then Details > Allow in Incognito." }
+    if (-not $ext) { Add-Check 'relay extension' 'FAIL' 'XDR Docker Relay not found in any Chrome profile' "chrome://extensions > Developer mode > Load unpacked > $(Join-Path $repoRoot 'chrome-ext'), then pin it." }
     foreach ($e in $ext) {
         if ($e.Disabled) { Add-Check 'relay extension' 'FAIL' "$($e.Profile): disabled ($($e.Path))" 'Enable it in chrome://extensions.' }
-        elseif (-not $e.Incognito) { Add-Check 'relay extension' 'FAIL' "$($e.Profile): not allowed in incognito" "chrome://extensions > XDR Docker Relay > Details > Allow in Incognito. The relay reads the cookie from the incognito window you sign in to." }
-        else { Add-Check 'relay extension' 'OK' "$($e.Profile): enabled, allowed in incognito ($($e.Path))" }
+        # The standup uses a normal window by default; incognito access only matters with -Incognito.
+        else { Add-Check 'relay extension' 'OK' "$($e.Profile): enabled$(if ($e.Incognito) { ', allowed in incognito' } else { ' (not allowed in incognito; only needed with the standup''s -Incognito)' }) ($($e.Path))" }
     }
 }
 $a = Join-Path $repoRoot 'chrome-ext'; $b = Join-Path $repoRoot 'docker/browser-extension'

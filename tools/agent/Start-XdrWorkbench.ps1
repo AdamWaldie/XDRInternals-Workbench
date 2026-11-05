@@ -13,14 +13,17 @@
              MTO section of tenants.txt. Run with -ListTenants to see the choices.
           3. On Windows, checks the HTTP.sys URL reservation the relay listener needs, and adds it
              when the window is elevated.
-          4. Opens a Chrome incognito window on the target tenant's Advanced Hunting page and checks
-             the relay extension is allowed in incognito. The relay reads the portal cookie from
-             the window you click it in, so sign in there.
+          4. Opens a normal Chrome window (Incognito with -Incognito) with the target tenant's
+             Advanced Hunting page and the multi-tenant portal. The relay reads the portal cookie
+             from the window you click it in, so sign in there.
           5. Starts Connect-XdrByBrowserExtension and prints the pairing code.
           6. Compares the live tenant with the target. On a match it saves the agent session to
              <repo>/.xdr-agent/session.json (git- and docker-ignored). On a mismatch it checks
              whether the target is reachable through MTO and tells you which way to go.
-          7. Creates investigations/<date>-<tenant-short>-<case>/ with a case notes file.
+          7. Runs a control hunt, retrying what it can, and records the result in the case lock.
+          8. Creates investigations/<date>-<tenant-short>-<case>/ with a case notes file, and at
+             Ready prints copy-paste commands to check the session, relay again, start again and
+             end the session. Nothing needs pasting into the agent: it reads the case lock.
 
         Run tools/agent/Test-XdrWorkbench.ps1 when a step fails. Tear down with
         tools/agent/Stop-XdrWorkbench.ps1 when you choose to.

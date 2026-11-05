@@ -103,6 +103,7 @@ Generated from README.md. **Guard** shows how `tools/agent/Invoke-XdrAgent.ps1` 
 | Invoke-XdrEndpointDeviceLiveResponseCommand | write | Sends a command to an active Live Response session in Microsoft Defender XDR. |
 | Invoke-XdrEndpointDevicePolicySync | write | Forces a policy sync on an endpoint device in Microsoft Defender XDR. |
 | Invoke-XdrHuntingQueryValidation | read | Validates an Advanced Hunting query for custom detection rules in Microsoft Defender XDR. |
+| Invoke-XdrAdvancedHunting | read | Runs a read-only Advanced Hunting query against the session's own tenant (direct mode). The wrapper routes direct-mode hunts here automatically. |
 | Invoke-XdrMtoAdvancedHunting | read | Executes an Advanced Hunting query across multiple tenants in MTO (Multi-Tenant Organization). |
 | Invoke-XdrRestMethod | read (GET only) | Invokes a REST API call to Microsoft Defender XDR with authenticated session. |
 | Invoke-XdrXspmHuntingQuery | read | Executes a hunting query against the Microsoft Defender XDR XSPM attack surface API. |
