@@ -5,7 +5,9 @@ Read this when SKILL.md steps 1 to 5 need more than the short version: a new mac
 ## Routes for getting the session to Claude
 
 1. **PowerShell relay (default).** The user runs `Start-XdrWorkbench.ps1` in PowerShell 7 on their machine and clicks **Relay session to container** in the extension with the pairing code. The script checks the tenant, writes `session.json` and the case lock, and creates the case folder. Covered below.
-2. **File handoff (alternative).** The user clicks **Save session for Claude** in the extension and saves `xdr-session-drop.json` in `<repo>/.xdr-agent`. Claude runs `tools/agent/Import-XdrSessionDrop.ps1`, which does the same checks and empties the drop file. Needs extension version 1.1 or later. Useful when the user can't run PowerShell, or the relay port is blocked.
+2. **File handoff (alternative).** The user clicks **Save session for Claude** in the extension and saves `xdr-session-drop.json` in `<repo>/.xdr-agent`. Claude runs `tools/agent/Import-XdrSessionDrop.ps1`, which does the same checks and empties the drop file. Needs extension version 1.1 or later. The import also runs the control hunt and reports `HuntRoute`, `HuntCheck` and `Fix` in its Ready record (exit 2 when hunting failed).
+
+Both routes also carry the multi-tenant portal session (`mto.security.microsoft.com`) when extension 1.2 or later is installed and that tab is signed in in the same window. Without it, multi-tenant hunting answers `440 Session timeout` (`hunting-outage.md`). After a `git pull` that changes `chrome-ext`, reload the extension in `chrome://extensions`, or the old version keeps running. Useful when the user can't run PowerShell, or the relay port is blocked.
 
 Both routes carry the same portal session, so both hit the same Conditional Access rules. Sign in from the normal Chrome profile: an Incognito session has no device identity and fails multi-tenant hunting with `AADSTS53000` for accounts under a compliant-device policy.
 

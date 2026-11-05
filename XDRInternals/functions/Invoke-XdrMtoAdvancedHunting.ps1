@@ -212,7 +212,37 @@
             Write-Debug "Request Headers: $($customHeaders | ConvertTo-Json -Compress)"
             Write-Debug "Request Body JSON: $($bodyJson | ConvertTo-Json -Compress)"
 
-            $response = Invoke-RestMethod -ContentType "application/json" -Uri $Uri -Method Post -Body $bodyJson -Headers $customHeaders -WebSession $script:session
+            # The MTO portal keeps its own sign-in. Use its session when the relay carried one,
+            # and fall back to the main portal session if that one has timed out (HTTP 440).
+            $attempts = @()
+            if ($script:mtoSession) {
+                $mtoHeaders = $customHeaders.Clone()
+                if ($script:mtoXsrf) { $mtoHeaders["X-XSRF-TOKEN"] = $script:mtoXsrf }
+                $attempts += , @('MTO portal session', $script:mtoSession, $mtoHeaders)
+            }
+            $attempts += , @('main portal session', $script:session, $customHeaders)
+            $response = $null
+            $tried = @()
+            for ($i = 0; $i -lt $attempts.Count; $i++) {
+                $attempt = $attempts[$i]
+                $tried += $attempt[0]
+                try {
+                    Write-Verbose "MTO hunting with the $($attempt[0])"
+                    $response = Invoke-RestMethod -ContentType "application/json" -Uri $Uri -Method Post -Body $bodyJson -Headers $attempt[2] -WebSession $attempt[1]
+                    $script:XdrMtoSessionUsed = $attempt[0]
+                    break
+                } catch {
+                    $statusCode = $null
+                    if ($_.Exception.Response) { $statusCode = [int]$_.Exception.Response.StatusCode }
+                    $isTimeout = $statusCode -eq 440 -or "$($_.Exception.Message)" -match '\b440\b'
+                    if ($isTimeout -and $i -lt $attempts.Count - 1) {
+                        Write-Verbose "The $($attempt[0]) got HTTP 440 from the MTO endpoint; trying the $($attempts[$i + 1][0])"
+                        continue
+                    }
+                    $script:XdrMtoSessionUsed = $tried -join ', then the '
+                    throw
+                }
+            }
             # Reset web session to avoid issues with custom headers in subsequent calls
             Set-XdrConnectionSettings -ResetWebSession
 
@@ -264,7 +294,7 @@
                 return $null
             }
         } catch {
-            Write-Error "Failed to execute MTO Advanced Hunting query: $_"
+            Write-Error "Failed to execute MTO Advanced Hunting query (with the $($script:XdrMtoSessionUsed)): $_"
         }
     }
 

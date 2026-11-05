@@ -68,6 +68,7 @@ param(
     [Parameter(ParameterSetName = 'Start')][switch]$NoBrowser,
     [Parameter(ParameterSetName = 'Start')][switch]$Incognito,
     [Parameter(ParameterSetName = 'Start')][switch]$NoCaseFolder,
+    [Parameter(ParameterSetName = 'Start')][switch]$NoHuntCheck,
     [Parameter(Mandatory, ParameterSetName = 'List')][switch]$ListTenants
 )
 $ErrorActionPreference = 'Stop'
@@ -90,6 +91,9 @@ Step 'Resolve tenant'
 try { $target = Resolve-XdrTenant -Tenant $Tenant } catch { Fail $_.Exception.Message }
 Write-Host "Target: $($target.Name) | $($target.TenantId)"
 $url = "https://security.microsoft.com/v2/advanced-hunting?tid=$($target.TenantId)"
+# The multi-tenant portal keeps its own sign-in. Opening it in the same window lets the relay carry
+# that session too, so MTO hunting doesn't answer "440 Session timeout".
+$mtoUrl = 'https://mto.security.microsoft.com/'
 
 if ($IsWindows) {
     Step "Relay listener URL reservation (port $Port)"
@@ -120,21 +124,31 @@ if ($ext) {
 $chrome = if ($NoBrowser) { $null } else { Find-XdrChrome }
 $kind = if ($Incognito) { 'an Incognito' } else { 'a new Chrome' }
 if ($chrome) {
-    $chromeArgs = if ($Incognito) { @('--incognito', $url) } else { @('--new-window', $url) }
+    $chromeArgs = if ($Incognito) { @('--incognito', $url, $mtoUrl) } else { @('--new-window', $url, $mtoUrl) }
     Start-Process -FilePath $chrome -ArgumentList $chromeArgs
-    Write-Host "Opened $kind window on $($target.Name). Sign in there if asked, and wait for Advanced Hunting to load."
+    Write-Host "Opened $kind window on $($target.Name) with two tabs: Advanced Hunting and the multi-tenant portal. Sign in if asked, and wait for both to load (the multi-tenant tab shows a tenant list)."
 } else {
-    Write-Host "Open $kind window at:`n  $url"
+    Write-Host "Open $kind window with these two tabs, and wait for both to load:`n  $url`n  $mtoUrl"
 }
 Write-Host "In that window, click the XDR Docker Relay extension, paste the pairing code printed below, keep port $Port, and click 'Relay session to container'."
 
-Step 'Sign-in relay'
-Connect-XdrByBrowserExtension -Port $Port -TenantId $target.TenantId
+function Invoke-Relay {
+    # One relay: listener, tenant check, saved session. Returns the tenant context, or stops the script.
+    Step 'Sign-in relay'
+    Connect-XdrByBrowserExtension -Port $Port -TenantId $target.TenantId
+    Step 'Confirm tenant'
+    $c = Get-XdrTenantContext -Force
+    Write-Host "Signed in: $($c.AuthInfo.TenantName) | $($c.AuthInfo.TenantId) | as $($c.AuthInfo.UserName)"
+    $c
+}
+function Write-CaseLock([hashtable]$Extra = @{}) {
+    $lock = [ordered]@{ CaseTenantId = $target.TenantId; CaseTenantName = $target.Name; SessionTenantId = $liveId; Case = $Case; Mode = $mode; SetUtc = (Get-Date).ToUniversalTime().ToString('o') }
+    foreach ($k in $Extra.Keys) { $lock[$k] = $Extra[$k] }
+    $lock | ConvertTo-Json | Set-Content -Path (Join-Path $repoRoot '.xdr-agent/case.json') -Encoding utf8
+}
 
-Step 'Confirm tenant'
-$ctx = Get-XdrTenantContext -Force
+$ctx = Invoke-Relay
 $liveId = $ctx.AuthInfo.TenantId; $liveName = $ctx.AuthInfo.TenantName
-Write-Host "Signed in: $liveName | $liveId | as $($ctx.AuthInfo.UserName)"
 $mode = 'direct'
 if ($liveId -ne $target.TenantId) {
     $mto = @(Get-XdrMtoTenantList -ErrorAction SilentlyContinue)
@@ -150,9 +164,48 @@ if ($liveId -ne $target.TenantId) {
 Step 'Hand session to the agent'
 & (Join-Path $PSScriptRoot 'Save-XdrAgentSession.ps1') -InRepo
 # Default case lock for every wrapper call until teardown or the next standup.
-[ordered]@{ CaseTenantId = $target.TenantId; CaseTenantName = $target.Name; SessionTenantId = $liveId; Case = $Case; Mode = $mode; SetUtc = (Get-Date).ToUniversalTime().ToString('o') } |
-    ConvertTo-Json | Set-Content -Path (Join-Path $repoRoot '.xdr-agent/case.json') -Encoding utf8
+Write-CaseLock
 Write-Host "Case lock: $($target.Name) ($($target.TenantId))"
+
+# Prove hunting works before calling the session ready. Fix what can be fixed here (relay again,
+# retry after an MFA prompt); otherwise stop on the reason and the fix, so nothing downstream
+# discovers it one failed query at a time.
+$hunt = $null; $mtoProbe = $null
+if (-not $NoHuntCheck) {
+    Step 'Hunting check'
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $hunt = Invoke-XdrHuntCheck -CaseTenantId $target.TenantId -CaseTenantName $target.Name
+        if ($hunt.Ok) { Write-Host $hunt.Reason -ForegroundColor $(if ($hunt.Kind -eq 'ok') { 'Green' } else { 'Yellow' }); if ($hunt.Fix) { Write-Host $hunt.Fix -ForegroundColor Yellow }; break }
+        Write-Host "Hunting failed ($($hunt.Kind)): $($hunt.Reason)" -ForegroundColor Red
+        Write-Host "Fix: $($hunt.Fix)" -ForegroundColor Yellow
+        if ($hunt.Kind -in 'tenant-guard', 'no-session', 'unknown' -or $attempt -eq 3) { break }
+        $answer = Read-Host "Do that now, then press Enter to retry (S to stop here)"
+        if ($answer -match '^[sS]') { break }
+        if ($hunt.Kind -eq 'device-compliance' -and $Incognito -and $chrome) {
+            # A fresh normal-profile window carries the device identity Conditional Access wants.
+            $Incognito = $false
+            Start-Process -FilePath $chrome -ArgumentList @('--new-window', $url, $mtoUrl)
+            Write-Host 'Opened a normal Chrome window. Sign in there, wait for both tabs, then relay from that window.'
+        }
+        if ($hunt.Kind -ne 'tenant-challenge') {
+            $ctx = Invoke-Relay
+            if ($ctx.AuthInfo.TenantId -ne $liveId) { Fail "The new relay is for $($ctx.AuthInfo.TenantName) ($($ctx.AuthInfo.TenantId)), not $liveName. Rerun the standup." }
+            & (Join-Path $PSScriptRoot 'Save-XdrAgentSession.ps1') -InRepo
+        }
+    }
+    # Direct-mode cases don't need MTO; probe it anyway so estate sweeps aren't a surprise later.
+    if ($hunt.Ok -and $hunt.Route -eq 'direct') {
+        $mtoProbe = Invoke-XdrHuntCheck -CaseTenantId $target.TenantId -CaseTenantName $target.Name -ForceMto
+        if ($mtoProbe.Ok) { Write-Host 'Multi-tenant endpoint: also working (estate sweeps available).' }
+        else { Write-Host "Multi-tenant endpoint: $($mtoProbe.Reason) Case hunting is unaffected." -ForegroundColor Yellow }
+    }
+    Write-CaseLock @{
+        HuntRoute = $(if ($hunt.Ok) { $hunt.Route } else { 'none' })
+        HuntCheck = $hunt.Kind
+        MtoRoute  = $(if ($hunt.Route -eq 'mto') { $hunt.Kind } elseif ($mtoProbe) { $mtoProbe.Kind } else { 'not checked' })
+        CheckedUtc = (Get-Date).ToUniversalTime().ToString('o')
+    }
+}
 
 if (-not $NoCaseFolder) {
     Step 'Case folder'
@@ -193,6 +246,29 @@ Window (UTC):
 }
 
 Step 'Ready'
-Write-Host "Agent calls:  -ExpectTenantId $liveId (hunts are locked to $($target.Name) by .xdr-agent/case.json)"
-Write-Host "Hunting:      Invoke-XdrMtoAdvancedHunting -TenantIds '$($target.TenantId)' ..."
-Write-Host "The session stays saved until you clear it: ./tools/agent/Stop-XdrWorkbench.ps1"
+$huntState = if ($NoHuntCheck) { 'not checked (-NoHuntCheck)' } elseif ($hunt.Ok) { "$($hunt.Route) route OK ($($hunt.Devices) devices in the last day)" } else { "FAILED: $($hunt.Kind). $($hunt.Fix)" }
+Write-Host "Session:  $liveName ($liveId) as $($ctx.AuthInfo.UserName)"
+Write-Host "Case:     $($target.Name) ($($target.TenantId)), mode $mode, case $Case"
+Write-Host "Hunting:  $huntState" -ForegroundColor $(if ($hunt.Ok) { 'Green' } elseif ($NoHuntCheck) { 'Gray' } else { 'Red' })
+Write-Host ''
+Write-Host 'Copy-paste commands (PowerShell 7, in this folder):' -ForegroundColor Cyan
+$controlHunt = "Invoke-XdrMtoAdvancedHunting -TenantIds '$($target.TenantId)' -DaysAgo 1 -QueryText 'DeviceInfo | summarize Devices = dcount(DeviceId)'"
+@(
+    './tools/agent/Test-XdrWorkbench.ps1 -Live'
+    "./tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId $liveId -Command `"$controlHunt`""
+    $(if ($mode -eq 'direct') { "./tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId $liveId -Command `"Get-XdrIncident -LookBackInDays 7 -PageSize 5`"" })
+    './tools/agent/Stop-XdrWorkbench.ps1'
+) | Where-Object { $_ } | ForEach-Object { Write-Host $_ }
+Write-Host ''
+Write-Host 'Paste this to Claude:' -ForegroundColor Cyan
+[ordered]@{
+    Status = $(if ($NoHuntCheck -or $hunt.Ok) { 'ready' } else { 'hunting-failed' })
+    Account = "$($ctx.AuthInfo.UserName)"; SessionTenant = "$liveName ($liveId)"; CaseTenant = "$($target.Name) ($($target.TenantId))"
+    Mode = $mode; Case = $Case; CaseFolder = $folder
+    HuntRoute = $(if ($hunt.Ok) { $hunt.Route } else { $null }); HuntCheck = $(if ($hunt) { $hunt.Kind } else { 'not checked' })
+    MtoRoute = $(if ($hunt.Route -eq 'mto') { $hunt.Kind } elseif ($mtoProbe) { $mtoProbe.Kind } else { 'not checked' })
+    Fix = $(if ($hunt -and -not $hunt.Ok) { $hunt.Fix } else { $null })
+    ExpectTenantId = "$liveId"
+} | ConvertTo-Json -Compress | Write-Host
+Write-Host "The session stays saved until you clear it with the Stop command above."
+if ($hunt -and -not $hunt.Ok) { exit 2 }

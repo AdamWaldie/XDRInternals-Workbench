@@ -204,6 +204,18 @@
             -ConnectionPreference PreferPortal `
             -FailureLabel 'Browser extension relay'
 
+        # The multi-tenant portal keeps its own sign-in; extension 1.2+ relays it when the analyst
+        # has mto.security.microsoft.com open in the same window. Without it, MTO hunting may
+        # answer "440 Session timeout" while every single-tenant call works.
+        $mtoSccAuthCookieValue = if ($relayPayload.mtoSccAuthCookieValue) { [string]$relayPayload.mtoSccAuthCookieValue } else { $null }
+        $mtoXsrfToken = if ($relayPayload.mtoXsrfToken) { [string]$relayPayload.mtoXsrfToken } else { $null }
+        Initialize-XdrMtoSession -SccAuth $mtoSccAuthCookieValue -Xsrf $mtoXsrfToken
+        if ($mtoSccAuthCookieValue) {
+            Write-Host "Multi-tenant portal session received as well."
+        } else {
+            Write-Host "No multi-tenant portal session in the relay (mto.security.microsoft.com not signed in, or extension older than 1.2)."
+        }
+
         # Surface the tenant this session actually landed on, so switch-heavy workflows
         # (e.g. an MSSP moving between customers) can confirm the intended tenant before
         # acting. Forced fetch so it reflects the live session rather than any cache.

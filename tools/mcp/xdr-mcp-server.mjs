@@ -32,7 +32,7 @@ const EXIT_MEANINGS = {
   1: 'the command threw an error',
   2: 'partial results: some non-terminating errors',
   3: 'refused by the write guard',
-  4: 'no saved session, or it is stale - the user must sign in again and run tools/agent/Save-XdrAgentSession.ps1',
+  4: 'no saved session, it is stale, or the portal rejected it (PORTAL SESSION TIMEOUT) - the user must run the standup again',
   5: 'tenant mismatch - stop and confirm the tenant with the user',
   6: 'not PowerShell 7',
   7: 'tenant guard - stop and confirm the customer with the user',

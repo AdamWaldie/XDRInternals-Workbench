@@ -9,9 +9,9 @@ Read this when a hunt fails while `Get-XdrTenantContext -Force` still returns th
 | Direct | `Invoke-XdrAdvancedHunting` | `security.microsoft.com`, single-tenant query executor (the one the Advanced Hunting page calls) | The case is in **direct** mode: the session tenant is the case tenant (`Mode: direct` in `.xdr-agent/case.json` and the `case lock` row of `Test-XdrWorkbench.ps1`) |
 | MTO | `Invoke-XdrMtoAdvancedHunting` | `mto.security.microsoft.com`, multi-tenant fan-out | The case is in **MTO** mode (the session tenant differs from the case tenant), or an estate sweep the analyst asked for |
 
-The relayed session is the `security.microsoft.com` portal session (`sccauth` and `XSRF-TOKEN`); the relay extension captures nothing for `mto.security.microsoft.com`. A session can therefore be valid for every single-tenant cmdlet and still get `440 Session timeout` from the MTO endpoint.
+The multi-tenant portal keeps its own sign-in. A relay that carries only the `security.microsoft.com` session (`sccauth` and `XSRF-TOKEN`) can be valid for every single-tenant cmdlet and still get `440 Session timeout` from the MTO endpoint. From relay extension 1.2, the relay also carries the MTO portal's `sccauth` and `XSRF-TOKEN` when `mto.security.microsoft.com` is open and signed in in the same window. The standup opens that tab for this reason. `Invoke-XdrMtoAdvancedHunting` tries that session first, then the main one.
 
-The direct route doesn't depend on the MTO endpoint, so in direct mode it is the default for hunting. It answers only for the session tenant. In an MTO case it would return the session tenant's data, so the wrapper refuses it there just as it refuses every other single-tenant cmdlet.
+**The wrapper picks the route.** Hunts are written as `Invoke-XdrMtoAdvancedHunting -TenantIds '<case tenant>' ...`. In direct mode, the wrapper sends them to `Invoke-XdrAdvancedHunting` when the module has it and it supports the parameters used. It notes this on stderr and tags the rows with `TenantId` and `TenantName`, so tenant checks, sidecars and splitting work the same on both routes. `XDR_HUNT_ROUTE=mto` forces the MTO endpoint. The direct route answers only for the session tenant, so in an MTO case the wrapper never uses it, and refuses it if it is called by name.
 
 If `Get-Command Invoke-XdrAdvancedHunting` finds nothing, the checkout is older than the direct route. Every hunt then goes through MTO, and a 440 leaves only the portal fallback (below).
 
@@ -19,7 +19,7 @@ If `Get-Command Invoke-XdrAdvancedHunting` finds nothing, the checkout is older 
 
 A direct-mode case. Every MTO hunt failed with `440 Session timeout` after each fresh relay, while `Get-XdrTenantContext` named the right tenant and account. `Test-XdrWorkbench.ps1` without `-Live` reported "No problems found", because it never calls a hunting endpoint. Opening `https://mto.security.microsoft.com` in the same Chrome profile and relaying again didn't help. While the API route was down, four leads were closed with portal exports (`DX0001` to `DX0004`). The fix was the direct route: a control hunt through `Invoke-XdrAdvancedHunting` returned the customer's onboarded devices, and the 45 remaining lower-priority leads went through it.
 
-**Not yet proven:** that MTO needs its own session cookie, which the extension can't relay. That reading comes from the code (the extension, `Set-XdrConnectionSettings` and `Update-XdrConnectionSettings` only handle `security.microsoft.com` cookies), not from a test. See "Proving the MTO cause" below before building on it.
+**Root cause, as far as it's known:** the MTO endpoint answers 440 to a session it doesn't accept; a request with an invalid `sccauth` gets exactly `440 Session timeout`. The relay used to carry only the `security.microsoft.com` session. It now carries the MTO portal session as well. The next standup with the MTO tab signed in settles it. `HuntCheck` or `MtoRoute` `ok` means the missing MTO session was the cause. `mto-rejected` means the endpoint refused even the MTO session, so something else is missing; see "Proving the MTO cause".
 
 ## Step 1. Classify the error
 
@@ -38,33 +38,32 @@ Read the wrapper's stderr and exit code. Don't guess from a summary.
 
 One command per step. Stop at the first step that settles it.
 
+0. **Read the standup's hunt check.** The standup and `Import-XdrSessionDrop.ps1` run a control hunt before they report Ready. The JSON line carries `HuntRoute`, `HuntCheck` (`ok`, `no-devices`, `session-expired`, `mto-no-session`, `mto-rejected`, `device-compliance`, `tenant-challenge`, `unauthorized`, `tenant-guard`, `no-session`, `unknown`), `MtoRoute` and `Fix`. The standup has already retried what it could. Start from its `Fix`.
 1. **Run the diagnostics with `-Live`.**
    ```bash
    pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json
    ```
    Without `-Live`, the script checks the module, the network and the saved session, but calls no hunting endpoint, so "No problems found" says nothing about hunting. With `-Live`, it runs the control hunt on the route the case mode uses. In direct mode it also probes the MTO route and reports it separately as `mto hunt`.
 2. **Confirm the session and the mode.** The `live call` row should show the expected tenant and account, and the `case lock` row the mode. If the tenant is wrong, stop (`multi-tenant.md`).
-3. **Direct mode:** run the control hunt on the direct route:
-   ```powershell
-   Invoke-XdrAdvancedHunting -QueryText 'DeviceInfo | where Timestamp > ago(1d) | summarize Devices = dcount(DeviceId)'
-   ```
-   Put it in a `-CommandFile` and run it through the wrapper. Check `Get-Help Invoke-XdrAdvancedHunting` for its tenant parameter; it refuses to run when the session is signed in to a different tenant from the one named.
-   - Rows come back: hunt the case on the direct route. Write in the case notes that hunting used the direct route and that MTO returned 440 at that time.
-   - The direct route fails too: the portal session has expired. Rerun the standup.
-4. **MTO mode:** the direct route isn't available, because it would answer for the session tenant. In order:
-   1. Ask once whether the analyst can sign in to the customer's own tenant (a guest account in it, say). If so, a new standup there gives a direct-mode case.
-   2. Otherwise use the portal fallback for the leads that can't wait.
-   3. Try opening `https://mto.security.microsoft.com` in the same Chrome profile and relaying again at most once. It didn't help the first time this happened, so don't keep repeating it.
-5. **Estate sweeps** need the MTO route. If it returns 440, tell the analyst the sweep can't run on the API right now. Don't break it into per-tenant direct hunts: each direct hunt answers only for the session tenant.
+3. **Direct mode:** the control hunt already ran on the direct route, if the module has `Invoke-XdrAdvancedHunting`; stderr says `Direct mode: hunt sent to Invoke-XdrAdvancedHunting`.
+   - It passed: hunt the case as usual. The wrapper keeps routing. Write in the case notes that hunting used the direct route, and what `mto hunt` reported.
+   - It failed with 440 too (`session-expired`): the portal session has expired. Rerun the standup.
+   - No direct route (older checkout, or a parameter it lacks): treat it as MTO mode, below.
+4. **MTO mode:** the direct route isn't available, because it would answer for the session tenant. Fix the root cause first, then fall back:
+   1. `mto-no-session`: the relay carried no MTO session. Open `https://mto.security.microsoft.com` in the same window, wait for the tenant list, and relay again (extension 1.2 or later). The standup offers this itself. Before extension 1.2, re-relaying couldn't help, because the MTO session was never sent.
+   2. `mto-rejected`: the MTO session was sent and refused. Reload the MTO tab once and relay again. If it still fails, stop retrying and use "Proving the MTO cause".
+   3. While that is open, ask once whether the analyst can sign in to the customer's own tenant (a guest account in it, say). If so, a new standup there gives a direct-mode case.
+   4. Otherwise use the portal fallback for the leads that can't wait.
+5. **Estate sweeps** need the MTO route. If it returns 440 after the steps in 4, tell the analyst the sweep can't run on the API right now. Don't break it into per-tenant direct hunts: each direct hunt answers only for the session tenant.
 
 ## Proving the MTO cause
 
-Do this before changing the extension or how the session is stored. Record cookie and header **names** only, never values.
+Use this when `mto-rejected` persists: the relay now carries the MTO portal's `sccauth` and `XSRF-TOKEN`, and the endpoint still answers 440. Record cookie and header **names** only, never values.
 
 1. Have the analyst open `https://mto.security.microsoft.com` in the normal Chrome profile and wait for the tenant list to load.
 2. In DevTools > Application > Cookies > `https://mto.security.microsoft.com`, they note which cookies exist, and whether each is set on `mto.security.microsoft.com` alone or on a parent domain.
 3. In the XDRay panel (`XDRay/`), or the DevTools Network tab, they run any hunt from the MTO portal and note the request headers sent to `.../mtoapi/mtp/huntingService/queryExecutor`, again by name.
-4. If MTO uses its own `sccauth` or XSRF token, the fix is credential handling: the extension reads the MTO cookies as well, `session.json` stores them, and `Set-XdrConnectionSettings` and `Invoke-XdrMtoAdvancedHunting` use them for that host. That widens what the relay carries, so build it only after the analyst agrees.
+4. Compare those names with what the relay carries (`sccauth` and `XSRF-TOKEN` from `mto.security.microsoft.com`) and what `Invoke-XdrMtoAdvancedHunting` sends (those cookies, `X-XSRF-TOKEN`, `mto-context`, `m-package`, `m-componentname`). A cookie or header the browser sends and the module doesn't is the next thing to carry. Capturing more widens what the relay holds, so agree it with the analyst first.
 
 ## Portal fallback
 

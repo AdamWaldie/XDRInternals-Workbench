@@ -22,6 +22,8 @@ Look through the folders connected to this session (`get_device_info`); each mou
 for d in "$HOME"/mnt/*/; do find "$d" -maxdepth 4 -path '*/tools/agent/Invoke-XdrAgent.ps1' 2>/dev/null; done | sed 's|/tools/agent/Invoke-XdrAgent.ps1||'
 ```
 
+When the agent runs inside the repo itself (Claude Code, or Codex), `<repo>` is `git rev-parse --show-toplevel`, provided both marker files are there; skip the search.
+
 If nothing turns up, ask the user to connect the repo folder to this session. The usual location is `C:\Users\AdamW\OneDrive\Documents\GitHub\XDRInternals-Workbench`; if it's cloned elsewhere, use the path they give. Call the found folder `<repo>` from here on.
 
 ### Step 2. Prepare Claude's side (Claude)
@@ -30,7 +32,7 @@ If nothing turns up, ask the user to connect the repo folder to this session. Th
 cd "<repo>" && bash tools/agent/setup.sh
 ```
 
-It installs PowerShell 7 for Claude's shell if missing, loads the module and checks network access to the portal. Use the `pwsh` path it prints. If a previous session or another customer's case lock is still there, clear it now with `pwsh -NoProfile -File tools/agent/Stop-XdrWorkbench.ps1`; the standup replaces both anyway.
+It installs PowerShell 7 for Claude's shell if missing, loads the module and checks network access to the portal. Use the `pwsh` path it prints. On Windows (Claude Code or Codex running on the analyst's machine), skip `setup.sh` and use `pwsh` directly; if `pwsh` is missing, the user installs it with `winget install Microsoft.PowerShell`. If a previous session or another customer's case lock is still there, clear it now with `pwsh -NoProfile -File tools/agent/Stop-XdrWorkbench.ps1`; the standup replaces both anyway.
 
 ### Step 3. Work out the customer and case from context (Claude)
 
@@ -43,10 +45,11 @@ If the case already has a folder, note its path for step 5 (`-CaseFolder`). Othe
 Send this, filled in with the repo path, customer and case:
 
 1. Open **PowerShell 7**, not Windows PowerShell. Start menu > "PowerShell 7", or type `pwsh` in any terminal. The first line of the window reads `PowerShell 7.x`; if it says `Windows PowerShell` (version 5.1), close it, because the module and scripts don't run there. Then `cd "<repo>"` (for example `cd "C:\Users\AdamW\OneDrive\Documents\GitHub\XDRInternals-Workbench"`).
-2. Run `./tools/agent/Start-XdrWorkbench.ps1 -Tenant "<customer>" -Case "<ref>"`. It opens a new Chrome window on the customer's Advanced Hunting page and prints a pairing code.
-3. In that window, sign in if asked and wait for Advanced Hunting to load.
-4. Click the **XDR Docker Relay** extension icon, paste the pairing code, keep port 8787, and click **Relay session to container**. Do this within 5 minutes of the code appearing.
-5. Paste the script's final **Ready** block back to Claude.
+2. Run `./tools/agent/Start-XdrWorkbench.ps1 -Tenant "<customer>" -Case "<ref>"`. It opens a new Chrome window with two tabs, the customer's Advanced Hunting page and the multi-tenant portal (`mto.security.microsoft.com`), and prints a pairing code.
+3. In that window, sign in if asked and wait for both tabs to load (the multi-tenant tab shows a tenant list).
+4. Click the **XDR Docker Relay** extension icon (version 1.2 or later), paste the pairing code, keep port 8787, and click **Relay session to container**. Do this within 5 minutes of the code appearing. The popup says whether the multi-tenant session came too.
+5. The script then runs a control hunt. If it fails, it names the cause and the fix (sign in again, complete an MFA prompt, open the multi-tenant tab), waits for Enter, and relays or retries itself, up to three times.
+6. At **Ready** it prints copy-paste commands and one JSON line headed "Paste this to Claude". The user pastes that line back. `"Status":"hunting-failed"` comes with a `Fix`: give the user that fix, and don't start querying.
 
 Use the normal Chrome profile, not Incognito. Cybanetix analyst accounts are under a Conditional Access policy that requires a compliant device, and an Incognito window carries no device identity. A session relayed from Incognito can read the portal but fails multi-tenant hunting with `AADSTS53000`. `-Incognito` exists for accounts without that policy.
 
@@ -65,7 +68,7 @@ The script checks the session's tenant against the customer. If the portal lande
 pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json
 ```
 
-The session is working when `control hunt` is OK: the session, the case lock and the customer's data all line up. Always pass `-Live`: without it no hunting endpoint is called, so "No problems found" says nothing about hunting. In direct mode the control hunt uses the direct route, and a separate `mto hunt` row says whether estate sweeps would work. Tell the user in one line: account, session tenant, customer, mode, device count. Any FAIL: give the user the fix it prints, or see `reference/troubleshooting.md`.
+The standup's JSON line already reports the hunt check (`HuntRoute`, `HuntCheck`, `MtoRoute`). Confirm it here. The session is working when `control hunt` is OK: the session, the case lock and the customer's data all line up. Always pass `-Live`: without it no hunting endpoint is called, so "No problems found" says nothing about hunting. In direct mode the control hunt uses the direct route, and a separate `mto hunt` row says whether estate sweeps would work. Tell the user in one line: account, session tenant, customer, mode, device count. Any FAIL: give the user the fix it prints, or see `reference/troubleshooting.md`.
 
 ### Step 6. Run queries (Claude)
 
@@ -75,12 +78,11 @@ Every call goes through the wrapper from `<repo>`:
 pwsh -NoProfile -File tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId <session tenant> -CommandFile <case folder>/queries/<name>.ps1 -OutFile <case folder>/evidence/<name>.json
 ```
 
-- KQL goes in a `.ps1` file as a here-string. The route depends on the case mode in the Ready block or `case lock` row:
-  - **Direct mode** (session tenant = case tenant): `Invoke-XdrAdvancedHunting`, the single-tenant endpoint on security.microsoft.com, when the checkout has it (`Get-Help Invoke-XdrAdvancedHunting` for its parameters).
-  - **MTO mode**, or a checkout without the direct route: `Invoke-XdrMtoAdvancedHunting -TenantIds '<case tenant>' -DaysAgo 30 -QueryText @'...'@`. Every MTO hunt names the case tenant; the wrapper refuses anything else.
+- KQL goes in a `.ps1` file as a here-string: `Invoke-XdrMtoAdvancedHunting -TenantIds '<case tenant>' -DaysAgo 30 -QueryText @'...'@`. Every hunt names the case tenant; the wrapper refuses anything else.
+- The wrapper picks the endpoint. In **direct mode** (session tenant = case tenant), it sends the hunt to `Invoke-XdrAdvancedHunting`, the single-tenant endpoint on security.microsoft.com, when the module has that cmdlet and it supports the parameters used, and says so on stderr. Rows still carry `TenantId` and `TenantName`. In **MTO mode**, it uses the multi-tenant endpoint with the relayed multi-tenant session, then the main session. `XDR_HUNT_ROUTE=mto` forces the multi-tenant endpoint.
 - Queries can come from the user, a document, or other skills (`kql-engineer`, `threat-hunting`, `defender-log-sources` for table and field maps). Adapt them to Defender Advanced Hunting tables. `Timestamp`, not `TimeGenerated`, and `EntraIdSignInEvents`, not `AADSignInEventsBeta`. Sentinel-only tables need a workspace (`-SelectedWorkspaces`).
 - Before hunting, run a control and coverage check, so a "no results" means something. Afterwards, record each query, its window and row count in the case notes.
-- Exit codes: `0` ok, `2` partial or a tenant not searched, `3` write guard, `4` session missing or stale (repeat step 4), `5` wrong session tenant, `7` tenant guard (stop and confirm the customer), `8` hunt session timeout (HTTP 440 from a hunting endpoint while the session still works). On `8`, follow `reference/hunting-outage.md`: switch route, or use the portal fallback. Don't re-relay in a loop.
+- Exit codes: `0` ok, `2` partial or a tenant not searched, `3` write guard, `4` session missing, stale or rejected by the portal (repeat step 4), `5` wrong session tenant, `7` tenant guard (stop and confirm the customer), `8` hunt session timeout (HTTP 440 from a hunting endpoint while the session still works). On `8`, follow `reference/hunting-outage.md`: switch route, or use the portal fallback. Don't re-relay in a loop.
 - Cmdlet usage for everything other than hunting: `reference/usage/INDEX.md`. Wrapper options, case order, incident-class table and KQL habits: `reference/hunting.md`. Hunting more than one customer: `reference/multi-tenant.md`. A hunt fails but the session works: `reference/hunting-outage.md`.
 
 ### Step 7. Tear down (Claude, only when asked)
@@ -96,4 +98,12 @@ The session stays until the user asks to end it (the wrapper refuses one older t
 
 ## Keeping it current
 
-This skill exists as the account skill `xdrinternals-workbench` and as `<repo>/.claude/skills/xdrinternals/SKILL.md`, with the same body and the same `reference/` files. Change both together. After a module update: `pwsh -NoProfile -File tools/agent/Build-XdrUsageIndex.ps1`, then `pwsh -NoProfile -File claude-desktop/build-skill.ps1`.
+The source of truth is `<repo>/.claude/skills/xdrinternals/` (this file and `reference/`). The account skill `xdrinternals-workbench` (Claude) and the Codex skill of the same name are built from it, never edited by hand:
+
+```powershell
+pwsh -NoProfile -File tools/agent/Build-XdrUsageIndex.ps1        # after a module update
+pwsh -NoProfile -File claude-desktop/build-workbench-skill.ps1   # dist/xdrinternals-workbench-skill.zip
+pwsh -NoProfile -File claude-desktop/build-workbench-skill.ps1 -InstallCodex   # also into ~/.codex/skills
+```
+
+Upload the zip in Claude under Settings > Capabilities > Skills, replacing the old `xdrinternals-workbench`. Codex also reads `<repo>/AGENTS.md`, which points here. `claude-desktop/build-skill.ps1` builds the separate Chat/Cowork skill.

@@ -16,6 +16,9 @@ chrome.storage.local.get(['xdrRelayPort'], (data) => {
 //   1. sccauth (+ XSRF-TOKEN) on security.microsoft.com - the Defender portal session
 //      cookie, minted after sign-in already passed. Replayed directly, so it does NOT
 //      re-run Entra's silent SSO and does NOT hit error 50058.
+//      The multi-tenant portal (mto.security.microsoft.com) keeps its own sign-in. When that
+//      tab has been opened in the same window, its sccauth/XSRF-TOKEN are relayed as well, so
+//      MTO hunting doesn't answer "440 Session timeout". Optional: absent means not signed in there.
 //   2. ESTSAUTH on login.microsoftonline.com - only a bootstrap; the container has to
 //      re-exchange it via silent SSO, which frequently fails with "session information
 //      is not sufficient for single-sign-on". Kept as a fallback.
@@ -54,7 +57,14 @@ async function gatherSessionCandidates() {
             sccAuthCookieValue: await read('https://security.microsoft.com', 'sccauth'),
             xsrfToken: await read('https://security.microsoft.com', 'XSRF-TOKEN'),
             estsAuthCookieValue: await read('https://login.microsoftonline.com', 'ESTSAUTH'),
+            mtoSccAuthCookieValue: await read('https://mto.security.microsoft.com', 'sccauth'),
+            mtoXsrfToken: await read('https://mto.security.microsoft.com', 'XSRF-TOKEN'),
         };
+        // A parent-domain cookie would read back as the same value; only a distinct one is the MTO sign-in.
+        if (candidate.mtoSccAuthCookieValue && candidate.mtoSccAuthCookieValue === candidate.sccAuthCookieValue) {
+            candidate.mtoSccAuthCookieValue = null;
+            candidate.mtoXsrfToken = null;
+        }
 
         if (candidate.sccAuthCookieValue || candidate.estsAuthCookieValue) {
             candidates.push(candidate);
@@ -110,6 +120,13 @@ els.send.addEventListener('click', async () => {
         if (chosen.estsAuthCookieValue) {
             payload.estsAuthCookieValue = chosen.estsAuthCookieValue;
         }
+        if (chosen.mtoSccAuthCookieValue) {
+            payload.mtoSccAuthCookieValue = chosen.mtoSccAuthCookieValue;
+            if (chosen.mtoXsrfToken) {
+                payload.mtoXsrfToken = chosen.mtoXsrfToken;
+            }
+        }
+        const mtoNote = chosen.mtoSccAuthCookieValue ? ' (with multi-tenant portal session)' : ' (no multi-tenant portal session: open mto.security.microsoft.com in this window for MTO hunting)';
 
         els.status.textContent = chosen.sccAuthCookieValue
             ? `Found Defender portal session in ${where}; relaying...`
@@ -128,7 +145,7 @@ els.send.addEventListener('click', async () => {
             throw new Error(`Container rejected the relay (HTTP ${response.status}). Check the pairing code and port, then re-run Connect-XdrByBrowserExtension for a fresh code.`);
         }
 
-        els.status.textContent = `Session relayed from ${where}. Check the PowerShell window: confirm the tenant it prints is the customer you meant.`;
+        els.status.textContent = `Session relayed from ${where}${mtoNote}. Check the PowerShell window: confirm the tenant it prints is the customer you meant.`;
     } catch (err) {
         els.status.textContent = `Failed: ${err.message}`;
     } finally {
@@ -152,9 +169,11 @@ els.save.addEventListener('click', async () => {
         const where = chosen.fromThisWindow ? 'this window' : chosen.incognito ? 'an Incognito window' : 'a regular window';
         const drop = {
             kind: 'xdr-session-drop',
-            version: 1,
+            version: 2,
             sccAuth: chosen.sccAuthCookieValue,
             xsrf: chosen.xsrfToken || null,
+            mtoSccAuth: chosen.mtoSccAuthCookieValue || null,
+            mtoXsrf: chosen.mtoSccAuthCookieValue ? (chosen.mtoXsrfToken || null) : null,
             userAgent: navigator.userAgent,
             source: where,
             savedAtUtc: new Date().toISOString(),
