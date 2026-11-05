@@ -16,6 +16,7 @@ First Rate Exchange Services Limited  f79ae67e-4e2c-4bf3-af42-387d3d40e68e
 Freeths LLP                           2cca93a4-c0c4-42f5-ae36-3463e1d1a051
 Hargreaves Lansdown                   90578e2d-fce8-4c57-a1a6-2b4909a9dc4d
 Ideagen plc                           1b7b26ac-444b-49f9-b397-7932bf0bac82
+North Sea Transition Authority        e681c59d-868e-4887-80fa-ce36f1f21b0f
 Ocean Technologies Group              46f6cbc7-c844-4175-90c4-dd0f275853f1
 Urenco                                a788d036-3272-4064-9bab-da84c1943144
 
