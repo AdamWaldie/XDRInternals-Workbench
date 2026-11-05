@@ -18,7 +18,8 @@
         Exit codes: 0 ok, 1 the command threw, 2 non-terminating errors (partial results),
         3 refused by the write guard, 4 no or stale session, 5 tenant mismatch, 7 tenant guard,
         6 not PowerShell 7 (4 also when the portal answers 440 to a non-hunting call), 8 hunt session timeout (HTTP 440 from a hunting endpoint while the
-        portal session still works; see .claude/skills/xdrinternals/reference/hunting-outage.md).
+        portal session still works; see .claude/skills/xdrinternals/reference/hunting-outage.md),
+        9 running in a Claude Code cloud session (the Workbench works only on the analyst's computer).
 
     .PARAMETER Command
         PowerShell to run, e.g. "Get-XdrIncident -IncidentId 123".
@@ -113,6 +114,15 @@ $ErrorActionPreference = 'Stop'
 function Write-Stderr {
     param ([string]$Message)
     [Console]::Error.WriteLine($Message)
+}
+
+# The saved session and the relay exist only on the analyst's computer. In a cloud session every call
+# would fail later and less clearly (no session, exit 4), so stop here and say where to work instead.
+. (Join-Path $PSScriptRoot 'XdrWorkbench.Common.ps1')
+$cloudMessage = Get-XdrCloudSessionMessage
+if ($cloudMessage) {
+    Write-Stderr "CLOUD SESSION: $cloudMessage"
+    exit 9
 }
 
 function Test-XdrAgentCommand {

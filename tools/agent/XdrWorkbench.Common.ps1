@@ -2,6 +2,16 @@
 
 function Get-XdrWorkbenchRoot { (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path }
 
+function Get-XdrCloudSessionMessage {
+    # Non-empty when this process runs in a Claude Code cloud session. The relay posts to 127.0.0.1 on
+    # the analyst's computer and the saved session lives in the repo there, so none of the Workbench
+    # works from a cloud container. Callers refuse with this text instead of handing the analyst
+    # commands to run by hand.
+    if ($env:CLAUDE_CODE_REMOTE -eq 'true') {
+        return 'This is a Claude Code cloud session. The Workbench runs only in Claude Code (or Codex) on the analyst''s own computer: the relay, the saved session and every query live there, and a cloud container can reach none of them. Open the Claude desktop app, start a new Claude Code session set to Local (not Cloud) on the XDRInternals-Workbench folder, and continue there.'
+    }
+}
+
 function Get-XdrTenantList {
     # Returns Name/TenantId rows from tenants.local.csv, else the MTO section of tenants.txt.
     param([string]$RepoRoot = (Get-XdrWorkbenchRoot))

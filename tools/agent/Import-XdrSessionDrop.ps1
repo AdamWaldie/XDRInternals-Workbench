@@ -38,6 +38,9 @@ $repoRoot = Get-XdrWorkbenchRoot
 $agentDir = Join-Path $repoRoot '.xdr-agent'
 function Out-Ready($obj) { $obj | ConvertTo-Json -Depth 4 }
 function Stop-With([int]$Code, [string]$Message) { [Console]::Error.WriteLine($Message); exit $Code }
+# A drop file in a cloud container means a live portal session was uploaded off the analyst's computer.
+$cloudMessage = Get-XdrCloudSessionMessage
+if ($cloudMessage) { Stop-With 9 "CLOUD SESSION: $cloudMessage Don't upload the session file: it is a live portal session." }
 
 # 1. Find the drop
 $drops = if ($DropPath) { @(Get-Item -LiteralPath $DropPath) } else { @(Get-ChildItem -Path $agentDir -Filter 'xdr-session-drop*.json' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending) }

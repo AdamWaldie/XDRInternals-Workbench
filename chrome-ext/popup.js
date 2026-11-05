@@ -4,12 +4,104 @@ const els = {
     send: document.getElementById('send'),
     save: document.getElementById('save'),
     status: document.getElementById('status'),
+    listener: document.getElementById('listener'),
 };
 
+// The standup's listener (Connect-XdrByBrowserExtension) takes the first free port in this range,
+// and binds to "+" or, on Windows without a URL reservation, to "localhost". Both hosts are tried.
+const DEFAULT_PORTS = Array.from({ length: 10 }, (_, i) => 8787 + i);
+const HOSTS = ['127.0.0.1', 'localhost'];
+const PAIRING_CODE = /^[0-9a-f]{12}$/;
+
+const NOTHING_LISTENING = 'Nothing on this computer is waiting for a relay (checked 127.0.0.1 and localhost, ports 8787-8796). ' +
+    'Run ./tools/agent/Start-XdrWorkbench.ps1 in PowerShell 7 on this computer, keep that window open, and relay within 5 minutes of the code appearing. ' +
+    'If Claude runs in the cloud (claude.ai/code or the Claude app without a connected computer), a relay can never reach it: use Claude Code on this computer.';
+
+function manualPort() {
+    const value = parseInt(els.port.value, 10);
+    return Number.isInteger(value) && value >= 1024 && value <= 65535 ? value : null;
+}
+
+async function fetchWithTimeout(url, options = {}, ms = 1500) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+// Finds every waiting standup listener. Only endpoints whose /health identifies the Workbench relay
+// count, so the session is never posted to an unrelated local service on one of these ports. A port
+// typed into the popup is also accepted when it answers at all, for listeners older than /health.
+async function findListeners() {
+    const typed = manualPort();
+    const ports = typed ? [typed] : DEFAULT_PORTS;
+    const probes = [];
+    for (const port of ports) {
+        for (const host of HOSTS) {
+            probes.push((async () => {
+                try {
+                    const res = await fetchWithTimeout(`http://${host}:${port}/health`);
+                    if (res.ok) {
+                        const body = await res.json().catch(() => null);
+                        if (body && body.service === 'xdr-workbench-relay') {
+                            return { host, port, secondsLeft: body.secondsLeft, legacy: false };
+                        }
+                    }
+                    if (typed && res.status === 404) {
+                        return { host, port, secondsLeft: null, legacy: true };
+                    }
+                } catch (err) {
+                    // Connection refused, timeout or a host binding that doesn't answer: not a listener.
+                }
+                return null;
+            })());
+        }
+    }
+    const found = (await Promise.all(probes)).filter(Boolean);
+    // One entry per port: the same listener can answer on both hosts.
+    const byPort = new Map();
+    for (const l of found) {
+        if (!byPort.has(l.port)) { byPort.set(l.port, l); }
+    }
+    return [...byPort.values()];
+}
+
+function describeListeners(listeners) {
+    if (!listeners.length) {
+        return { ok: false, text: 'No standup is waiting on this computer. Run Start-XdrWorkbench.ps1 in PowerShell 7 here first.' };
+    }
+    const parts = listeners.map((l) => {
+        if (l.secondsLeft === null || l.secondsLeft === undefined) { return `port ${l.port}`; }
+        const m = Math.floor(l.secondsLeft / 60);
+        const sec = String(l.secondsLeft % 60).padStart(2, '0');
+        return `port ${l.port} (${m}:${sec} left)`;
+    });
+    return { ok: true, text: `Standup waiting on ${parts.join(', ')}.` };
+}
+
+let refreshing = false;
+async function refreshListenerState() {
+    if (refreshing) { return; }
+    refreshing = true;
+    try {
+        const state = describeListeners(await findListeners());
+        els.listener.textContent = state.text;
+        els.listener.className = state.ok ? 'listener ok' : 'listener none';
+    } finally {
+        refreshing = false;
+    }
+}
+
 chrome.storage.local.get(['xdrRelayPort'], (data) => {
-    if (data.xdrRelayPort) {
+    // Only a port the analyst set by hand is remembered; blank means "find it".
+    if (data.xdrRelayPort && data.xdrRelayPort !== 8787) {
         els.port.value = data.xdrRelayPort;
     }
+    refreshListenerState();
+    setInterval(refreshListenerState, 3000);
 });
 
 // Two credentials matter, in priority order:
@@ -75,26 +167,39 @@ async function gatherSessionCandidates() {
 }
 
 els.send.addEventListener('click', async () => {
-    const code = els.code.value.trim();
-    const port = parseInt(els.port.value, 10) || 8787;
+    // Pasted codes often carry spaces, quotes or a trailing period from the terminal.
+    const code = els.code.value.replace(/[^0-9a-fA-F]/g, '').toLowerCase();
+    els.code.value = code;
 
     els.status.textContent = '';
 
     if (!code) {
-        els.status.textContent = 'Enter the pairing code shown by Connect-XdrByBrowserExtension.';
+        els.status.textContent = 'Paste the pairing code that Start-XdrWorkbench.ps1 printed in PowerShell.';
+        return;
+    }
+    if (!PAIRING_CODE.test(code)) {
+        els.status.textContent = 'That is not a pairing code: it should be 12 characters, 0-9 and a-f. Copy it again from the PowerShell window.';
         return;
     }
 
-    chrome.storage.local.set({ xdrRelayPort: port });
+    chrome.storage.local.set({ xdrRelayPort: manualPort() || 8787 });
 
     els.send.disabled = true;
-    els.status.textContent = 'Reading session cookie...';
+    els.status.textContent = 'Looking for the standup on this computer...';
 
     try {
+        // Find the listener before touching any cookie, so a missing standup is named as such
+        // rather than surfacing as the browser's bare "Failed to fetch".
+        const listeners = await findListeners();
+        if (!listeners.length) {
+            throw new Error(NOTHING_LISTENING);
+        }
+
+        els.status.textContent = 'Reading session cookie...';
         const candidates = await gatherSessionCandidates();
 
         if (!candidates.length) {
-            throw new Error('No Defender XDR or Entra sign-in cookies found in any cookie store. Sign in to security.microsoft.com (preferably in an Incognito window), and make sure "Allow in Incognito" is enabled for this extension if you did.');
+            throw new Error('No Defender XDR or Entra sign-in cookies found. Sign in to security.microsoft.com in the Chrome window the standup opened and wait for the portal to load, then relay again.');
         }
 
         // Pick the session the analyst means: the window the popup was opened from, then an
@@ -132,20 +237,40 @@ els.send.addEventListener('click', async () => {
             ? `Found Defender portal session in ${where}; relaying...`
             : `Found Entra sign-in cookie in ${where} (portal cookie not present); relaying...`;
 
-        const response = await fetch(`http://127.0.0.1:${port}/relay`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${code}`,
-            },
-            body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-            throw new Error(`Container rejected the relay (HTTP ${response.status}). Check the pairing code and port, then re-run Connect-XdrByBrowserExtension for a fresh code.`);
+        // A listener only accepts its own pairing code (401 otherwise, without using it up), so with
+        // more than one standup waiting, offer the session to each until one accepts it.
+        let accepted = null;
+        let lastFailure = null;
+        for (const listener of listeners) {
+            let response;
+            try {
+                response = await fetchWithTimeout(`http://${listener.host}:${listener.port}/relay`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${code}`,
+                    },
+                    body: JSON.stringify(payload),
+                }, 15000);
+            } catch (err) {
+                lastFailure = `the standup on port ${listener.port} stopped answering (its window may have closed or timed out)`;
+                continue;
+            }
+            if (response.ok) {
+                accepted = listener;
+                break;
+            }
+            lastFailure = response.status === 401
+                ? 'the pairing code does not match the waiting standup. Copy the latest code from the PowerShell window; a code stops working when the standup restarts'
+                : `the standup on port ${listener.port} answered HTTP ${response.status}`;
         }
 
-        els.status.textContent = `Session relayed from ${where}${mtoNote}. Check the PowerShell window: confirm the tenant it prints is the customer you meant.`;
+        if (!accepted) {
+            throw new Error(`Relay not accepted: ${lastFailure}.`);
+        }
+
+        els.status.textContent = `Session relayed from ${where} to port ${accepted.port}${mtoNote}. Check the PowerShell window: confirm the tenant it prints is the customer you meant.`;
+        refreshListenerState();
     } catch (err) {
         els.status.textContent = `Failed: ${err.message}`;
     } finally {
@@ -162,7 +287,7 @@ els.save.addEventListener('click', async () => {
     try {
         const candidates = (await gatherSessionCandidates()).filter((c) => c.sccAuthCookieValue);
         if (!candidates.length) {
-            throw new Error('No Defender portal session found. Sign in to security.microsoft.com in an Incognito window and wait for the portal to load (and check "Allow in Incognito" is on for this extension).');
+            throw new Error('No Defender portal session found. Sign in to security.microsoft.com in this window and wait for the portal to load, then save again.');
         }
         const rank = (c) => (c.fromThisWindow ? 0 : c.incognito ? 1 : 2);
         const chosen = candidates.slice().sort((a, b) => rank(a) - rank(b))[0];
@@ -181,7 +306,7 @@ els.save.addEventListener('click', async () => {
         const url = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(drop));
         // saveAs lets the analyst pick the repo's .xdr-agent folder; Chrome remembers it next time.
         await chrome.downloads.download({ url, filename: 'xdr-session-drop.json', saveAs: true, conflictAction: 'overwrite' });
-        els.status.textContent = `Session from ${where} offered for saving. Save it in <repo>\\.xdr-agent, then tell Claude.`;
+        els.status.textContent = `Session from ${where} offered for saving. Save it in <repo>\\.xdr-agent on this computer, then tell Claude. Never upload or paste this file into a chat: it is a live portal session.`;
     } catch (err) {
         els.status.textContent = `Failed: ${err.message}`;
     } finally {

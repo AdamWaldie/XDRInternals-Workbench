@@ -37,6 +37,7 @@ const EXIT_MEANINGS = {
   6: 'not PowerShell 7',
   7: 'tenant guard - stop and confirm the customer with the user',
   8: 'hunt session timeout (HTTP 440 from a hunting endpoint while the portal session works) - in direct mode hunt with Invoke-XdrAdvancedHunting; otherwise use the portal fallback; do not re-relay in a loop',
+  9: 'running in a Claude Code cloud session - the Workbench works only on the analyst\'s computer; tell the user to open a Local Claude Code session on the repo folder, and do not hand them commands to run instead',
 };
 
 function log(message) {

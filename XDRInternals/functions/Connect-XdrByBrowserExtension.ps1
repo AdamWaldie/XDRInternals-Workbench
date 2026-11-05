@@ -37,8 +37,15 @@
         traffic, which arrives via the container's bridge interface).
 
     .PARAMETER Port
-        The port to listen on. Must match the port configured in the browser extension's
-        popup and the port published by `docker run`/`docker compose`.
+        The port to listen on. When omitted, the first free port from 8787 to 8796 is used, and
+        extension 1.3+ finds it on its own. Inside a container only 8787 is tried, because that
+        is the port `docker compose` publishes. When given, only that port is used; it must then
+        match the port published by `docker run`/`docker compose`.
+
+    .PARAMETER AllowCloudSession
+        Start the listener even inside a Claude Code cloud session. The extension can only reach
+        127.0.0.1 on the analyst's own machine, so a listener in a cloud container never receives
+        the relay; without this switch the cmdlet refuses to start there.
 
     .PARAMETER TimeoutSeconds
         Maximum time to wait for the browser extension to relay a session.
@@ -56,8 +63,8 @@
     .EXAMPLE
         Connect-XdrByBrowserExtension
 
-        Listens on 127.0.0.1:8787, prints a pairing code, and waits up to 5 minutes for the
-        XDR Docker Relay extension to relay a session.
+        Listens on the first free port from 8787, prints a pairing code, and waits up to 5
+        minutes for the XDR Docker Relay extension to relay a session.
 
     .EXAMPLE
         Connect-XdrByBrowserExtension -Port 9191 -TimeoutSeconds 120
@@ -70,6 +77,8 @@
         [ValidateRange(1024, 65535)]
         [int]$Port = 8787,
 
+        [switch]$AllowCloudSession,
+
         [ValidateRange(30, 1800)]
         [int]$TimeoutSeconds = 300,
 
@@ -79,30 +88,67 @@
     )
 
     process {
-        # Binds to all interfaces inside the container rather than literally 127.0.0.1: when
-        # this runs in Docker, `-p 127.0.0.1:<port>:<port>` delivers published traffic to the
-        # container's bridge interface, not its loopback, so a listener bound only to 127.0.0.1
-        # would never see it. The actual "loopback only" guarantee comes from that `-p` binding
-        # on the host side, not from the bind address in here.
-        $listener = [System.Net.HttpListener]::new()
-        $listener.Prefixes.Add("http://+:$Port/")
-
-        try {
-            $listener.Start()
-        } catch {
-            throw "Failed to listen on port $Port. Is another Connect-XdrByBrowserExtension already running, or is the port already in use? $($_.Exception.Message)"
+        # The extension posts to 127.0.0.1 on the analyst's own machine. In a Claude Code cloud
+        # session this process runs in a remote container, so the relay could never arrive here;
+        # refuse up front rather than print a pairing code that ends in "Failed to fetch".
+        if ($env:CLAUDE_CODE_REMOTE -eq 'true' -and -not $AllowCloudSession) {
+            throw ("This is a Claude Code cloud session. The browser extension relays to 127.0.0.1 on your own computer, " +
+                "so a listener here would never receive it. Run tools/agent/Start-XdrWorkbench.ps1 in PowerShell 7 on " +
+                "the computer with Chrome, and use Claude Code on that computer (or connect its repo folder to this " +
+                "session through Remote Control).")
         }
+
+        $inContainer = (Test-Path '/.dockerenv') -or (Test-Path '/run/.containerenv')
+        $candidatePorts = if ($PSBoundParameters.ContainsKey('Port') -or $inContainer) { @($Port) } else { 8787..8796 }
+
+        # Binds to all interfaces ("+") first. In Docker, `-p 127.0.0.1:<port>:<port>` delivers
+        # published traffic to the container's bridge interface, not its loopback, so a listener
+        # bound only to 127.0.0.1 would never see it; the "loopback only" guarantee comes from that
+        # `-p` binding on the host side. On Windows, "+" needs an HTTP.sys URL reservation
+        # (netsh http add urlacl); without one, fall back to "localhost", which HTTP.sys lets any
+        # user register and which still only answers local requests. Extension 1.3+ tries both
+        # 127.0.0.1 and localhost, so either binding is found.
+        $listener = $null
+        $boundPrefix = $null
+        $bindErrors = [System.Collections.Generic.List[string]]::new()
+        foreach ($candidatePort in $candidatePorts) {
+            $prefixes = @("http://+:$candidatePort/")
+            if ($IsWindows -or $null -eq $IsWindows) { $prefixes += "http://localhost:$candidatePort/" }
+            foreach ($prefix in $prefixes) {
+                $attempt = [System.Net.HttpListener]::new()
+                $attempt.Prefixes.Add($prefix)
+                try {
+                    $attempt.Start()
+                    $listener = $attempt
+                    $boundPrefix = $prefix
+                    $Port = $candidatePort
+                    break
+                } catch {
+                    $bindErrors.Add("${prefix}: $($_.Exception.Message)")
+                    try { $attempt.Close() } catch { Write-Verbose "Ignoring listener cleanup error: $($_.Exception.Message)" }
+                }
+            }
+            if ($listener) { break }
+        }
+        if (-not $listener) {
+            $tried = ($candidatePorts | ForEach-Object { "$_" }) -join ', '
+            throw ("Failed to listen on port(s) $tried. Another Connect-XdrByBrowserExtension or program may hold the port; close it, " +
+                "or on Windows add the URL reservation once from an elevated PowerShell: netsh http add urlacl url=http://+:$($candidatePorts[0])/ " +
+                "user=`"$env:USERDOMAIN\$env:USERNAME`". Details: $($bindErrors -join ' | ')")
+        }
+        Write-Verbose "Relay listener bound to $boundPrefix"
 
         $pairingCode = [guid]::NewGuid().ToString('N').Substring(0, 12)
         $expectedAuthHeader = "Bearer $pairingCode"
+        $expiresAt = (Get-Date).AddSeconds($TimeoutSeconds)
 
         Write-Host "Waiting for the XDR Docker Relay browser extension."
-        Write-Host "  1. Open the extension's popup in Chrome (make sure you're signed into Microsoft Defender XDR there)."
+        Write-Host "  1. Open the extension's popup in Chrome, in the window signed in to Microsoft Defender XDR."
         Write-Host "  2. Paste this pairing code: $pairingCode"
-        Write-Host "  3. Set the port to $Port if it isn't already, then click 'Relay session to container'."
-        Write-Host "Listening on port $Port. Timeout in $TimeoutSeconds seconds."
+        Write-Host "  3. Click 'Relay session to container'. Extension 1.3+ finds port $Port by itself; older versions need the port set to $Port."
+        Write-Host ("Listening on port {0}. Relay before {1:HH:mm:ss} ({2} seconds); after that, rerun for a new code." -f $Port, $expiresAt, $TimeoutSeconds)
 
-        $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+        $deadline = $expiresAt
         $relayPayload = $null
 
         try {
@@ -119,8 +165,38 @@
                 $response = $context.Response
 
                 try {
+                    # Extension 1.3+ fetches with host permissions and needs no CORS; older
+                    # versions, or a fetch to "localhost" before the extension is reloaded, go
+                    # through CORS. Allow only extension origins, never web pages.
+                    $origin = $request.Headers['Origin']
+                    if ($origin -and $origin -match '^(chrome|moz|ms-browser)-extension://') {
+                        $response.AddHeader('Access-Control-Allow-Origin', $origin)
+                        $response.AddHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+                        $response.AddHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+                        $response.AddHeader('Access-Control-Allow-Private-Network', 'true')
+                        $response.AddHeader('Vary', 'Origin')
+                    }
+
                     if ($request.HttpMethod -eq 'OPTIONS') {
                         $response.StatusCode = 204
+                        continue
+                    }
+
+                    # Unauthenticated liveness probe for the extension, so it can find the
+                    # listener's port and say "nothing is listening" instead of "Failed to fetch".
+                    # Reveals nothing but that a relay is waiting and until when.
+                    if ($request.HttpMethod -eq 'GET' -and $request.Url.AbsolutePath -eq '/health') {
+                        $health = [ordered]@{
+                            service    = 'xdr-workbench-relay'
+                            version    = 2
+                            port       = $Port
+                            expiresUtc = $expiresAt.ToUniversalTime().ToString('o')
+                            secondsLeft = [int][Math]::Max(0, ($expiresAt - (Get-Date)).TotalSeconds)
+                        } | ConvertTo-Json -Compress
+                        $healthBytes = [System.Text.Encoding]::UTF8.GetBytes($health)
+                        $response.ContentType = 'application/json'
+                        $response.ContentLength64 = $healthBytes.Length
+                        $response.OutputStream.Write($healthBytes, 0, $healthBytes.Length)
                         continue
                     }
 
@@ -169,7 +245,7 @@
         }
 
         if (-not $relayPayload) {
-            throw "Timed out after $TimeoutSeconds seconds waiting for the browser extension to relay a session."
+            throw "Timed out after $TimeoutSeconds seconds waiting for the browser extension to relay a session. The pairing code has expired; run again for a new one."
         }
 
         $sccAuthCookieValue = if ($relayPayload.sccAuthCookieValue) { [string]$relayPayload.sccAuthCookieValue } else { $null }

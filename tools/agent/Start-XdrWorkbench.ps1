@@ -35,7 +35,8 @@
         Short case or hunt reference used in the folder name, e.g. INC12345 or edge-device-hunt.
 
     .PARAMETER Port
-        Relay port. Must match the extension popup. Default 8787.
+        Relay port. When omitted, the listener takes the first free port from 8787 to 8796 and
+        extension 1.3+ finds it. When given, only that port is used.
 
     .PARAMETER AllowMto
         Kept for compatibility; MTO is now automatic. When the signed-in tenant differs from the
@@ -75,15 +76,26 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'List')][switch]$ListTenants
 )
 $ErrorActionPreference = 'Stop'
+$script:PortGiven = $PSBoundParameters.ContainsKey('Port')
 . (Join-Path $PSScriptRoot 'XdrWorkbench.Common.ps1')
 $repoRoot = Get-XdrWorkbenchRoot
 function Step([string]$m) { Write-Host "`n== $m" -ForegroundColor Cyan }
-function Fail([string]$m) { Write-Host $m -ForegroundColor Red; Write-Host "Diagnose with: ./tools/agent/Test-XdrWorkbench.ps1 -Port $Port" -ForegroundColor DarkGray; exit 1 }
+# Every command printed for the analyst calls its script by full path, so it works from whatever
+# folder the PowerShell window is in. A relative ./tools/... line fails as soon as the cd is missed.
+function Get-XdrScriptCall([string]$Name) { "& '" + ((Join-Path $repoRoot "tools/agent/$Name") -replace "'", "''") + "'" }
+function Fail([string]$m) { Write-Host $m -ForegroundColor Red; Write-Host "Diagnose with: $(Get-XdrScriptCall 'Test-XdrWorkbench.ps1')" -ForegroundColor DarkGray; exit 1 }
 
 if ($ListTenants) {
     Get-XdrTenantList | Sort-Object Name | Format-Table Name, TenantId -AutoSize | Out-Host
     return
 }
+
+Step 'Where this runs'
+# The relay posts to 127.0.0.1 on this computer and the agent reads the session from this checkout,
+# so a cloud container can never complete the standup.
+$cloudMessage = Get-XdrCloudSessionMessage
+if ($cloudMessage) { Fail $cloudMessage }
+Write-Host "Local: $([Environment]::MachineName)"
 
 Step 'PowerShell and module'
 if ($PSVersionTable.PSVersion.Major -lt 7) { Fail "This needs PowerShell 7 (pwsh). You're in $($PSVersionTable.PSVersion). Install it with: winget install Microsoft.PowerShell" }
@@ -105,10 +117,14 @@ if ($IsWindows) {
     else {
         $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
         if ($elevated) { netsh http add urlacl url=http://+:$Port/ user="$env:USERDOMAIN\$env:USERNAME" | Out-Null; Write-Host 'Added.' }
-        else { Fail "The relay listener can't bind without a URL reservation. Run this once in an elevated PowerShell, then rerun:`n  netsh http add urlacl url=http://+:$Port/ user=`"$env:USERDOMAIN\$env:USERNAME`"" }
+        else { Write-Host "Not reserved; the listener will bind to localhost instead, which extension 1.3+ finds. (To reserve it, once, elevated: netsh http add urlacl url=http://+:$Port/ user=`"$env:USERDOMAIN\$env:USERNAME`")" -ForegroundColor Yellow }
     }
-    $busy = @(Get-XdrPortListener -Port $Port)
-    if ($busy) { Fail "Port $Port is already in use by $($busy.Process -join ', ') (PID $($busy.Pid -join ', ')). Close the earlier Connect-XdrByBrowserExtension window, or pick another port with -Port (and the same port in the extension)." }
+}
+$busy = @(Get-XdrPortListener -Port $Port)
+if ($busy) {
+    $owner = "$($busy.Process -join ', ') (PID $($busy.Pid -join ', '))"
+    if ($PSBoundParameters.ContainsKey('Port')) { Fail "Port $Port is already in use by $owner. Close that window (a stale standup?), or leave out -Port so the next free port is used." }
+    Write-Host "Port $Port is in use by $owner; the listener will take the next free port, and the extension finds it. Close it if it is a stale standup." -ForegroundColor Yellow
 }
 
 Step 'Portal window'
@@ -133,12 +149,26 @@ if ($chrome) {
 } else {
     Write-Host "Open $kind window with these two tabs, and wait for both to load:`n  $url`n  $mtoUrl"
 }
-Write-Host "In that window, click the XDR Docker Relay extension, paste the pairing code printed below, keep port $Port, and click 'Relay session to container'."
+Write-Host "In that window, click the XDR Docker Relay extension (1.3 or later), paste the pairing code printed below, and click 'Relay session to container'. The popup shows whether it can see this standup."
 
 function Invoke-Relay {
     # One relay: listener, tenant check, saved session. Returns the tenant context, or stops the script.
     Step 'Sign-in relay'
-    Connect-XdrByBrowserExtension -Port $Port -TenantId $target.TenantId
+    $relayArgs = @{ TenantId = $target.TenantId }
+    if ($script:PortGiven) { $relayArgs.Port = $Port }
+    # A pairing code lasts 5 minutes. When it runs out, offer a fresh one here rather than ending the
+    # standup, so a slow sign-in or MFA prompt never means starting again from the top.
+    while ($true) {
+        try {
+            $null = Connect-XdrByBrowserExtension @relayArgs
+            break
+        } catch {
+            if ($_.Exception.Message -notmatch 'Timed out') { throw }
+            Write-Host 'No relay arrived in time, so that pairing code has expired.' -ForegroundColor Yellow
+            $answer = Read-Host 'Press Enter for a new pairing code (S to stop)'
+            if ($answer -match '^[sS]') { Fail 'Stopped before a relay arrived. Nothing was saved.' }
+        }
+    }
     Step 'Confirm tenant'
     $c = Get-XdrTenantContext -Force
     Write-Host "Signed in: $($c.AuthInfo.TenantName) | $($c.AuthInfo.TenantId) | as $($c.AuthInfo.UserName)"
@@ -262,20 +292,20 @@ if ($hunt -and -not $hunt.Ok) { Write-Host "Fix:      $($hunt.Fix)" -ForegroundC
 
 # Commands for when something goes wrong, and for ending the session. Each line is complete,
 # so it can be copied as it stands into PowerShell 7 in this folder.
-$rerun = "./tools/agent/Start-XdrWorkbench.ps1 -Tenant '$($target.TenantId)' -Case '$($Case -replace "'", "''")'"
+$rerun = "$(Get-XdrScriptCall 'Start-XdrWorkbench.ps1') -Tenant '$($target.TenantId)' -Case '$($Case -replace "'", "''")'"
 if ($Port -ne 8787) { $rerun += " -Port $Port" }
 if ($Incognito) { $rerun += ' -Incognito' }
 $portArg = if ($Port -ne 8787) { " -Port $Port" } else { '' }
 function Cmd([string]$Label, [string]$Line) { [pscustomobject]@{ Label = $Label; Line = $Line } }
 $commands = @(
-    Cmd 'Check the session, and print a fix for anything wrong:' "./tools/agent/Test-XdrWorkbench.ps1 -Live$portArg"
+    Cmd 'Check the session, and print a fix for anything wrong:' "$(Get-XdrScriptCall 'Test-XdrWorkbench.ps1') -Live$portArg"
     Cmd 'Session expired or hunting stopped, portal window still open (relay again):' "$rerun -NoBrowser"
     Cmd 'Start again with a fresh portal window:' $rerun
-    Cmd 'End the session (clears the saved session and case lock; keeps investigations/):' './tools/agent/Stop-XdrWorkbench.ps1'
-    if ($IsWindows) { Cmd 'End the session and remove the relay port reservation (elevated window):' "./tools/agent/Stop-XdrWorkbench.ps1 -RemoveUrlAcl$portArg" }
+    Cmd 'End the session (clears the saved session and case lock; keeps investigations/):' (Get-XdrScriptCall 'Stop-XdrWorkbench.ps1')
+    if ($IsWindows) { Cmd 'End the session and remove the relay port reservation (elevated window):' "$(Get-XdrScriptCall 'Stop-XdrWorkbench.ps1') -RemoveUrlAcl$portArg" }
 )
 Write-Host ''
-Write-Host 'If something goes wrong (PowerShell 7, in this folder):' -ForegroundColor Cyan
+Write-Host 'If something goes wrong (PowerShell 7, any folder):' -ForegroundColor Cyan
 # Labels print as PowerShell comments, so copying several lines at once is harmless too.
 foreach ($cmd in $commands) { Write-Host "# $($cmd.Label)" -ForegroundColor DarkGray; Write-Host $cmd.Line }
 Write-Host ''
