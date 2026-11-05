@@ -6,8 +6,8 @@
         Imports XDRInternals, reads Get-Help -Full for every exported cmdlet, and writes
         .claude/skills/xdrinternals/reference/usage/<group>.md plus INDEX.md. The guard column
         uses the same rules as Invoke-XdrAgent.ps1, so the index can't drift from what the
-        wrapper allows. Run it after any module change, then run claude-desktop/build-skill.ps1
-        to repackage the desktop skill.
+        wrapper allows. Run it after any module change, then run claude-desktop/build-workbench-skill.ps1
+        to repackage the skill.
 
     .EXAMPLE
         pwsh -NoProfile -File tools/agent/Build-XdrUsageIndex.ps1
