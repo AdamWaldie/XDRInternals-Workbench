@@ -84,12 +84,12 @@ When the user asks to start, set up or connect a session, run this section. The 
 3. Claude gives the user the runbook (below), which covers conditions 4 to 6.
 4. When the user says the standup reached "Ready" (nothing is pasted back), Claude runs `pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json` from `<repo>`. Every FAIL goes to `troubleshooting.md`. When the control hunt passes, Claude reports in one line: account, session tenant, case lock (customer and ID), devices in the control hunt, and session age. The `case lock` row names the case folder. Then it passes `-ExpectTenantId <session tenant>` on every later call.
 
-**Pick the tenant.** Ask which customer if the user hasn't said. `./tools/agent/Start-XdrWorkbench.ps1 -ListTenants` (or reading `tenants.local.csv`) shows the choices. The script accepts a full name, a unique part of a name, or a tenant ID, and lists the candidates when a name is ambiguous. Never carry a tenant over from an earlier case or example.
+**Pick the tenant.** Ask which customer if the user hasn't said. `cd "<repo>"; ./tools/agent/Start-XdrWorkbench.ps1 -ListTenants` (or reading `tenants.local.csv`) shows the choices. The script accepts a full name, a unique part of a name, or a tenant ID, and lists the candidates when a name is ambiguous. Never carry a tenant over from an earlier case or example.
 
 **User side** (PowerShell 7 on the machine with Chrome, from `<repo>`):
 
 ```powershell
-./tools/agent/Start-XdrWorkbench.ps1 -Tenant <name, partial name or tenant ID> -Case <ref>
+cd "<repo>"; ./tools/agent/Start-XdrWorkbench.ps1 -Tenant <name, partial name or tenant ID> -Case <ref>
 ```
 
 It checks pwsh 7 and the module, resolves the tenant, checks the Windows URL reservation and that the relay port is free, opens a **normal Chrome window** with two tabs, the tenant's Advanced Hunting page and the multi-tenant portal, checks the relay extension is enabled, starts `Connect-XdrByBrowserExtension -TenantId`, compares the live tenant with the target, saves the session to `<repo>/.xdr-agent/session.json`, and creates `investigations/<date>-<tenant>-<case>/` with `case-notes.md`. The relay reads the portal cookie from the window the extension is clicked in, so the user signs in and clicks Relay inside that window. It then runs a control hunt and, at Ready, prints copy-paste commands for checking the session, relaying again, starting again and ending the session. Options: `-NoBrowser` (container, or window already open; also how to relay again into the same window), `-NoCaseFolder` (case already has an ir-case-workspace folder), `-Incognito` (accounts without the compliant-device policy only). MTO mode is automatic when the portal lands in another tenant that has the target in its MTO list.
@@ -120,9 +120,9 @@ Popup messages and what they mean:
 
 1. Open PowerShell 7 (Start menu > PowerShell 7, or a PowerShell 7 tab in Windows Terminal) and check `$PSVersionTable.PSVersion` shows major version 7. Windows PowerShell 5.1 can't load the module.
 2. `cd "<repo>"`. If a script fails with "running scripts is disabled on this system": `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` (this window only), then rerun it.
-3. Clean slate when a previous session or another customer's case lock may exist: `./tools/agent/Stop-XdrWorkbench.ps1`.
-4. Check the machine: `./tools/agent/Test-XdrWorkbench.ps1`, fixing anything marked FAIL.
-5. `./tools/agent/Start-XdrWorkbench.ps1 -Tenant <customer> -Case <ref>`. The script imports the module itself. Then follow the token steps above: sign in in the window it opens, and relay from that same window with the pairing code. If the session landed in another tenant that has the customer in its MTO list, the script sets MTO mode itself.
+3. Clean slate when a previous session or another customer's case lock may exist: `cd "<repo>"; ./tools/agent/Stop-XdrWorkbench.ps1`.
+4. Check the machine: `cd "<repo>"; ./tools/agent/Test-XdrWorkbench.ps1`, fixing anything marked FAIL.
+5. `cd "<repo>"; ./tools/agent/Start-XdrWorkbench.ps1 -Tenant <customer> -Case <ref>`, as one line, always with the `cd` (the commands the standup prints use full paths and work from any folder). The script imports the module itself. Then follow the token steps above: sign in in the window it opens, and relay from that same window with the pairing code. If the session landed in another tenant that has the customer in its MTO list, the script sets MTO mode itself.
 6. At **Ready**, tell Claude; nothing is pasted back. Keep the commands it prints: they check the session, relay again (`-NoBrowser`), start again, and end the session. If it shows `Hunting: FAILED`, apply its `Fix:` line and run the relay-again command.
 
 Manual fallback if the script route fails: `Import-Module ./XDRInternals/XDRInternals.psd1`, then `Connect-XdrByBrowserExtension -TenantId <customer tenant ID>` (relay from the signed-in portal window), then `./tools/agent/Save-XdrAgentSession.ps1 -InRepo`. That records no case lock, so pass `-CaseTenantId <customer tenant ID>` on every wrapper call.

@@ -54,12 +54,18 @@ If the case already has a folder, note its path for step 5 (`-CaseFolder`). Othe
 
 Send this, filled in with the repo path, customer and case:
 
-1. Open **PowerShell 7**, not Windows PowerShell. Start menu > "PowerShell 7", or type `pwsh` in any terminal. The first line of the window reads `PowerShell 7.x`; if it says `Windows PowerShell` (version 5.1), close it, because the module and scripts don't run there. Then `cd "<repo>"` (for example `cd "C:\Users\AdamW\OneDrive\Documents\GitHub\XDRInternals-Workbench"`).
-2. Run `./tools/agent/Start-XdrWorkbench.ps1 -Tenant "<customer>" -Case "<ref>"`. It opens a new Chrome window with two tabs, the customer's Advanced Hunting page and the multi-tenant portal (`mto.security.microsoft.com`), and prints a pairing code.
+1. Open **PowerShell 7**, not Windows PowerShell. Start menu > "PowerShell 7", or type `pwsh` in any terminal. The first line of the window reads `PowerShell 7.x`; if it says `Windows PowerShell` (version 5.1), close it, because the module and scripts don't run there.
+2. Paste this one line. It changes to the repo folder and starts the standup:
+   ```powershell
+   cd "<repo>"; ./tools/agent/Start-XdrWorkbench.ps1 -Tenant "<customer>" -Case "<ref>"
+   ```
+   It opens a new Chrome window with two tabs, the customer's Advanced Hunting page and the multi-tenant portal (`mto.security.microsoft.com`), and prints a pairing code.
 3. In that window, sign in if asked and wait for both tabs to load (the multi-tenant tab shows a tenant list).
 4. Click the **XDR Docker Relay** extension icon (version 1.3 or later), paste the pairing code, and click **Relay session to container**. The popup shows whether it can see the standup and how long the code has left; leave the port blank and it finds it. If the 5 minutes run out, the standup offers a new code. The popup says whether the multi-tenant session came too.
 5. The script then runs a control hunt. If it fails, it names the cause and the fix (sign in again, complete an MFA prompt, open the multi-tenant tab), waits for Enter, and relays or retries itself, up to three times.
 6. At **Ready** it prints the session, case and hunt-check result, then copy-paste commands for when something goes wrong: check the session (`Test-XdrWorkbench.ps1 -Live`), relay again into the open portal window (`-NoBrowser`), start again with a fresh window, and end the session (`Stop-XdrWorkbench.ps1`). The user tells Claude it's ready; there is nothing to paste back. If it ends with `Hunting: FAILED`, it prints a `Fix:` line and exits 2: the user applies the fix and runs the relay-again command before anything is queried.
+
+**Always send step 2 as that single line, with `cd "<repo>"; ` at the front and the real repo path filled in** (for example `cd "C:\Users\AdamW\OneDrive\Documents\GitHub\XDRInternals-Workbench"; ./tools/agent/Start-XdrWorkbench.ps1 -Tenant "Contoso" -Case "INC123"`). Never send the script part on its own, and never split the `cd` into a separate step: a missed `cd` is the most common reason the standup fails with "not recognized as a name of a cmdlet". Every other PowerShell command for the user follows the same rule. The commands the standup prints itself use full paths and work from any folder.
 
 Use the normal Chrome profile, not Incognito. Cybanetix analyst accounts are under a Conditional Access policy that requires a compliant device, and an Incognito window carries no device identity. A session relayed from Incognito can read the portal but fails multi-tenant hunting with `AADSTS53000`. `-Incognito` exists for accounts without that policy.
 
@@ -75,7 +81,7 @@ The script checks the session's tenant against the customer. If the portal lande
 ### Step 5. Verify (Claude)
 
 ```bash
-pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json
+cd "<repo>" && pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json
 ```
 
 The standup stores its hunt check (`HuntRoute`, `HuntCheck`, `MtoRoute`) and the case folder (`CaseFolder`) in the case lock, which the `case lock` row reports; this run confirms it live. The session is working when `control hunt` is OK: the session, the case lock and the customer's data all line up. Always pass `-Live`: without it no hunting endpoint is called, so "No problems found" says nothing about hunting. In direct mode the control hunt uses the direct route, and a separate `mto hunt` row says whether estate sweeps would work. Tell the user in one line: account, session tenant, customer, mode, device count. Any FAIL: give the user the fix it prints, or see `reference/troubleshooting.md`.
@@ -85,7 +91,7 @@ The standup stores its hunt check (`HuntRoute`, `HuntCheck`, `MtoRoute`) and the
 Every call goes through the wrapper from `<repo>`:
 
 ```bash
-pwsh -NoProfile -File tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId <session tenant> -CommandFile <case folder>/queries/<name>.ps1 -OutFile <case folder>/evidence/<name>.json
+cd "<repo>" && pwsh -NoProfile -File tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId <session tenant> -CommandFile <case folder>/queries/<name>.ps1 -OutFile <case folder>/evidence/<name>.json
 ```
 
 - KQL goes in a `.ps1` file as a here-string: `Invoke-XdrMtoAdvancedHunting -TenantIds '<case tenant>' -DaysAgo 30 -QueryText @'...'@`. Every hunt names the case tenant; the wrapper refuses anything else.

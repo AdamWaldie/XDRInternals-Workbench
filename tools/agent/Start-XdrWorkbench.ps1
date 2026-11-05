@@ -80,7 +80,10 @@ $script:PortGiven = $PSBoundParameters.ContainsKey('Port')
 . (Join-Path $PSScriptRoot 'XdrWorkbench.Common.ps1')
 $repoRoot = Get-XdrWorkbenchRoot
 function Step([string]$m) { Write-Host "`n== $m" -ForegroundColor Cyan }
-function Fail([string]$m) { Write-Host $m -ForegroundColor Red; Write-Host "Diagnose with: ./tools/agent/Test-XdrWorkbench.ps1 -Port $Port" -ForegroundColor DarkGray; exit 1 }
+# Every command printed for the analyst calls its script by full path, so it works from whatever
+# folder the PowerShell window is in. A relative ./tools/... line fails as soon as the cd is missed.
+function Get-XdrScriptCall([string]$Name) { "& '" + ((Join-Path $repoRoot "tools/agent/$Name") -replace "'", "''") + "'" }
+function Fail([string]$m) { Write-Host $m -ForegroundColor Red; Write-Host "Diagnose with: $(Get-XdrScriptCall 'Test-XdrWorkbench.ps1')" -ForegroundColor DarkGray; exit 1 }
 
 if ($ListTenants) {
     Get-XdrTenantList | Sort-Object Name | Format-Table Name, TenantId -AutoSize | Out-Host
@@ -289,20 +292,20 @@ if ($hunt -and -not $hunt.Ok) { Write-Host "Fix:      $($hunt.Fix)" -ForegroundC
 
 # Commands for when something goes wrong, and for ending the session. Each line is complete,
 # so it can be copied as it stands into PowerShell 7 in this folder.
-$rerun = "./tools/agent/Start-XdrWorkbench.ps1 -Tenant '$($target.TenantId)' -Case '$($Case -replace "'", "''")'"
+$rerun = "$(Get-XdrScriptCall 'Start-XdrWorkbench.ps1') -Tenant '$($target.TenantId)' -Case '$($Case -replace "'", "''")'"
 if ($Port -ne 8787) { $rerun += " -Port $Port" }
 if ($Incognito) { $rerun += ' -Incognito' }
 $portArg = if ($Port -ne 8787) { " -Port $Port" } else { '' }
 function Cmd([string]$Label, [string]$Line) { [pscustomobject]@{ Label = $Label; Line = $Line } }
 $commands = @(
-    Cmd 'Check the session, and print a fix for anything wrong:' "./tools/agent/Test-XdrWorkbench.ps1 -Live$portArg"
+    Cmd 'Check the session, and print a fix for anything wrong:' "$(Get-XdrScriptCall 'Test-XdrWorkbench.ps1') -Live$portArg"
     Cmd 'Session expired or hunting stopped, portal window still open (relay again):' "$rerun -NoBrowser"
     Cmd 'Start again with a fresh portal window:' $rerun
-    Cmd 'End the session (clears the saved session and case lock; keeps investigations/):' './tools/agent/Stop-XdrWorkbench.ps1'
-    if ($IsWindows) { Cmd 'End the session and remove the relay port reservation (elevated window):' "./tools/agent/Stop-XdrWorkbench.ps1 -RemoveUrlAcl$portArg" }
+    Cmd 'End the session (clears the saved session and case lock; keeps investigations/):' (Get-XdrScriptCall 'Stop-XdrWorkbench.ps1')
+    if ($IsWindows) { Cmd 'End the session and remove the relay port reservation (elevated window):' "$(Get-XdrScriptCall 'Stop-XdrWorkbench.ps1') -RemoveUrlAcl$portArg" }
 )
 Write-Host ''
-Write-Host 'If something goes wrong (PowerShell 7, in this folder):' -ForegroundColor Cyan
+Write-Host 'If something goes wrong (PowerShell 7, any folder):' -ForegroundColor Cyan
 # Labels print as PowerShell comments, so copying several lines at once is harmless too.
 foreach ($cmd in $commands) { Write-Host "# $($cmd.Label)" -ForegroundColor DarkGray; Write-Host $cmd.Line }
 Write-Host ''
