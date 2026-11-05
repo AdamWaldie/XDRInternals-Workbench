@@ -38,7 +38,7 @@ Read the wrapper's stderr and exit code. Don't guess from a summary.
 
 One command per step. Stop at the first step that settles it.
 
-0. **Read the standup's hunt check.** The standup and `Import-XdrSessionDrop.ps1` run a control hunt before they report Ready. The JSON line carries `HuntRoute`, `HuntCheck` (`ok`, `no-devices`, `session-expired`, `mto-no-session`, `mto-rejected`, `device-compliance`, `tenant-challenge`, `unauthorized`, `tenant-guard`, `no-session`, `unknown`), `MtoRoute` and `Fix`. The standup has already retried what it could. Start from its `Fix`.
+0. **Read the standup's hunt check.** The standup and `Import-XdrSessionDrop.ps1` run a control hunt before they report Ready. The standup records its result in the case lock (`.xdr-agent/case.json`, reported by the `case lock` row of `Test-XdrWorkbench.ps1`) and prints the fix on its `Fix:` line; `Import-XdrSessionDrop.ps1` prints it in its JSON Ready record. Both carry `HuntRoute`, `HuntCheck` (`ok`, `no-devices`, `session-expired`, `mto-no-session`, `mto-rejected`, `device-compliance`, `tenant-challenge`, `unauthorized`, `tenant-guard`, `no-session`, `unknown`), `MtoRoute` and `Fix`. The standup has already retried what it could. Start from its `Fix`.
 1. **Run the diagnostics with `-Live`.**
    ```bash
    pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json

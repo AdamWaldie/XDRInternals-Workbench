@@ -16,8 +16,8 @@ Popup messages for the Save button:
 | Popup says | Meaning | Fix |
 | --- | --- | --- |
 | `Session from this window offered for saving` | Save dialog opened | Save into `<repo>\.xdr-agent` |
-| `Session from an Incognito window` or `a regular window` | Saved a different window's session | Close the other window, sign in again in one incognito window, save again |
-| `No Defender portal session found` | Not signed in, portal not loaded, or the extension isn't allowed in incognito | Sign in, wait for Advanced Hunting, check Allow in Incognito |
+| `Session from an Incognito window` or `a regular window` | Saved a different window's session | Close the other window, sign in again in one window, save again |
+| `No Defender portal session found` | Not signed in, portal not loaded, or (Incognito only) the extension isn't allowed in incognito | Sign in, wait for Advanced Hunting; in Incognito, check Allow in Incognito |
 
 The drop file goes to whichever folder the user picks. If it lands in Downloads or anywhere outside `<repo>/.xdr-agent`, the import won't see it. Ask the user to move it, and point out that it holds a live portal session.
 
@@ -72,8 +72,8 @@ When the user asks to start, set up or connect a session, run this section. The 
 | 1 | Claude has found the repo clone | Claude (Locating the repo, above) | Both marker files present |
 | 2 | Claude's shell has PowerShell 7 and the module loads | Claude | `bash tools/agent/setup.sh` |
 | 3 | Claude's shell reaches security.microsoft.com and mto.security.microsoft.com | Claude, or the user's network settings | `setup.sh`, or the network rows of `Test-XdrWorkbench.ps1` |
-| 4 | The user's machine has PowerShell 7, the relay extension loaded and allowed in incognito, and the port reservation | User, once (First-time setup, above) | `./tools/agent/Test-XdrWorkbench.ps1` on their machine |
-| 5 | A portal session for the user, relayed from an incognito window, saved at `<repo>/.xdr-agent/session.json` and under 12 hours old | User, with `Start-XdrWorkbench.ps1` | Wrapper exits 4 without it |
+| 4 | The user's machine has PowerShell 7, the relay extension loaded, and the port reservation | User, once (First-time setup, above) | `./tools/agent/Test-XdrWorkbench.ps1` on their machine |
+| 5 | A portal session for the user, relayed from the standup's normal Chrome window, saved at `<repo>/.xdr-agent/session.json` and under 12 hours old | User, with `Start-XdrWorkbench.ps1` | Wrapper exits 4 without it |
 | 6 | The case customer is the case lock in `<repo>/.xdr-agent/case.json`, and the session tenant is that customer or has it in its MTO list | User, with `Start-XdrWorkbench.ps1`; Claude confirms | `Get-XdrTenantContext -Force` and the `Case lock:` banner |
 | 7 | A control hunt against the case tenant returns rows | Claude | `Test-XdrWorkbench.ps1 -Live` reports `control hunt OK` |
 
@@ -82,7 +82,7 @@ When the user asks to start, set up or connect a session, run this section. The 
 1. Claude checks conditions 1 to 3 first, before asking the user for anything: find the repo, `cd "<repo>"`, run `bash tools/agent/setup.sh`, and use the pwsh path it prints. Fix what can be fixed from the shell; report the rest.
 2. Claude settles the customer (below) and the case reference.
 3. Claude gives the user the runbook (below), which covers conditions 4 to 6.
-4. When the user pastes back the "Ready" block, Claude runs `pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json` from `<repo>`. Every FAIL goes to `troubleshooting.md`. When the control hunt passes, Claude reports in one line: account, session tenant, case lock (customer and ID), devices in the control hunt, and session age. Then it passes `-ExpectTenantId <session tenant>` on every later call.
+4. When the user says the standup reached "Ready" (nothing is pasted back), Claude runs `pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json` from `<repo>`. Every FAIL goes to `troubleshooting.md`. When the control hunt passes, Claude reports in one line: account, session tenant, case lock (customer and ID), devices in the control hunt, and session age. The `case lock` row names the case folder. Then it passes `-ExpectTenantId <session tenant>` on every later call.
 
 **Pick the tenant.** Ask which customer if the user hasn't said. `./tools/agent/Start-XdrWorkbench.ps1 -ListTenants` (or reading `tenants.local.csv`) shows the choices. The script accepts a full name, a unique part of a name, or a tenant ID, and lists the candidates when a name is ambiguous. Never carry a tenant over from an earlier case or example.
 
@@ -92,27 +92,27 @@ When the user asks to start, set up or connect a session, run this section. The 
 ./tools/agent/Start-XdrWorkbench.ps1 -Tenant <name, partial name or tenant ID> -Case <ref>
 ```
 
-It checks pwsh 7 and the module, resolves the tenant, checks the Windows URL reservation and that the relay port is free, opens a **Chrome incognito window** on that tenant's Advanced Hunting page, checks the relay extension is enabled and allowed in incognito, starts `Connect-XdrByBrowserExtension -TenantId`, compares the live tenant with the target, saves the session to `<repo>/.xdr-agent/session.json`, and creates `investigations/<date>-<tenant>-<case>/` with `case-notes.md`. The relay reads the portal cookie from the window the extension is clicked in, so the user signs in and clicks Relay inside that incognito window. Options: `-NoBrowser` (container, or window already open), `-NoCaseFolder` (case already has an ir-case-workspace folder), `-AllowMto` (portal landed in another tenant that has the target in its MTO list; hunting only).
+It checks pwsh 7 and the module, resolves the tenant, checks the Windows URL reservation and that the relay port is free, opens a **normal Chrome window** with two tabs, the tenant's Advanced Hunting page and the multi-tenant portal, checks the relay extension is enabled, starts `Connect-XdrByBrowserExtension -TenantId`, compares the live tenant with the target, saves the session to `<repo>/.xdr-agent/session.json`, and creates `investigations/<date>-<tenant>-<case>/` with `case-notes.md`. The relay reads the portal cookie from the window the extension is clicked in, so the user signs in and clicks Relay inside that window. It then runs a control hunt and, at Ready, prints copy-paste commands for checking the session, relaying again, starting again and ending the session. Options: `-NoBrowser` (container, or window already open; also how to relay again into the same window), `-NoCaseFolder` (case already has an ir-case-workspace folder), `-Incognito` (accounts without the compliant-device policy only). MTO mode is automatic when the portal lands in another tenant that has the target in its MTO list.
 
 **Getting the token with the relay extension (user).** The "token" is the Defender portal session cookie from the user's own sign-in. The extension reads it from Chrome and posts it, with a single-use pairing code, to the listener on `127.0.0.1:<port>`; the standup then saves it to `<repo>/.xdr-agent/session.json`. Give the user these steps:
 
-1. Close any regular (non-incognito) Chrome window that is signed in to security.microsoft.com, or sign out there. The extension prefers the window it's clicked from, then incognito, but an older copy of the extension took the first signed-in window it found, which is how a session can land in the wrong customer.
-2. Run the standup (runbook step 5). It opens an incognito window at `https://security.microsoft.com/v2/advanced-hunting?tid=<customer tenant ID>` and prints `Paste this pairing code: <12 characters>`. The code is single-use and the listener waits 5 minutes (`-TimeoutSeconds` on the cmdlet changes that).
-3. In that incognito window, sign in with the analyst account and complete MFA. Wait until the Advanced Hunting page has loaded and the tenant shown top right is the customer. If it shows another customer, switch tenant there before relaying.
-4. Still in that incognito window, click the **XDR Docker Relay** icon. Paste the pairing code into **Pairing code**, check **Container relay port** matches the standup (8787 by default; the popup remembers the last value), and click **Relay session to container**.
+1. Close any other Chrome window signed in to security.microsoft.com as a different customer, or sign out there. The extension prefers the window it's clicked from, but an older copy took the first signed-in window it found, which is how a session can land in the wrong customer.
+2. Run the standup (runbook step 5). It opens a normal Chrome window at `https://security.microsoft.com/v2/advanced-hunting?tid=<customer tenant ID>`, with the multi-tenant portal in a second tab, and prints `Paste this pairing code: <12 characters>`. The code is single-use and the listener waits 5 minutes (`-TimeoutSeconds` on the cmdlet changes that).
+3. In that window, sign in with the analyst account and complete MFA. Wait until both tabs have loaded (the multi-tenant tab shows a tenant list) and the tenant shown top right is the customer. If it shows another customer, switch tenant there before relaying.
+4. Still in that window, click the **XDR Docker Relay** icon. Paste the pairing code into **Pairing code**, check **Container relay port** matches the standup (8787 by default; the popup remembers the last value), and click **Relay session to container**.
 5. The popup should say `Session relayed from this window`. "an Incognito window" or "a regular window" means it took a different window's session: stop, close the other window, and relay again with a fresh standup.
-6. Back in PowerShell, the standup prints the signed-in tenant, compares it with the target, and saves the session and case lock. The user pastes the "Ready" block to Claude.
+6. Back in PowerShell, the standup prints the signed-in tenant, compares it with the target, saves the session and case lock, and runs a control hunt. At Ready the user tells Claude; nothing is pasted back.
 
 Popup messages and what they mean:
 
 | Popup says | Meaning | Fix |
 | --- | --- | --- |
 | `Enter the pairing code shown by Connect-XdrByBrowserExtension.` | Code box empty | Paste the code from PowerShell |
-| `No Defender XDR or Entra sign-in cookies found in any cookie store` | Not signed in, or the extension isn't allowed in incognito | Sign in in the incognito window; turn on Allow in Incognito |
+| `No Defender XDR or Entra sign-in cookies found in any cookie store` | Not signed in, or the extension isn't allowed in incognito | Sign in in the standup's window and wait for the portal; with `-Incognito`, turn on Allow in Incognito |
 | `Found Entra sign-in cookie ... (portal cookie not present)` | Signed in to Entra but the Defender portal hasn't loaded | Open security.microsoft.com in that window, wait for it to load, relay again |
 | `Failed: Failed to fetch` | Nothing listening on that port: standup not running, timed out, wrong port, or the container started without `--service-ports` | Rerun the standup and relay within 5 minutes, with matching ports |
 | `Failed: Container rejected the relay (HTTP 401)` or similar | Wrong or reused pairing code | Rerun the standup for a new code |
-| `Session relayed from a regular window` | Another window's session was used | Close that window, rerun the standup, relay again from the incognito window |
+| `Session relayed from a regular window` | Another window's session was used | Close that window, rerun the standup, relay again from the window it opened |
 
  Assume a fresh window. Fill in the repo path, customer and case reference, and send it as numbered steps:
 
@@ -120,9 +120,9 @@ Popup messages and what they mean:
 2. `cd "<repo>"`. If a script fails with "running scripts is disabled on this system": `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` (this window only), then rerun it.
 3. Clean slate when a previous session or another customer's case lock may exist: `./tools/agent/Stop-XdrWorkbench.ps1`.
 4. Check the machine: `./tools/agent/Test-XdrWorkbench.ps1`, fixing anything marked FAIL.
-5. `./tools/agent/Start-XdrWorkbench.ps1 -Tenant <customer> -Case <ref>`. The script imports the module itself. Then follow the token steps above: sign in in the incognito window it opens, and relay from that same window with the pairing code. If it reports the session landed in another tenant that has the customer in its MTO list, rerun with `-AllowMto`.
-6. Paste the "Ready" block back so Claude can confirm the session and case lock.
+5. `./tools/agent/Start-XdrWorkbench.ps1 -Tenant <customer> -Case <ref>`. The script imports the module itself. Then follow the token steps above: sign in in the window it opens, and relay from that same window with the pairing code. If the session landed in another tenant that has the customer in its MTO list, the script sets MTO mode itself.
+6. At **Ready**, tell Claude; nothing is pasted back. Keep the commands it prints: they check the session, relay again (`-NoBrowser`), start again, and end the session. If it shows `Hunting: FAILED`, apply its `Fix:` line and run the relay-again command.
 
-Manual fallback if the script route fails: `Import-Module ./XDRInternals/XDRInternals.psd1`, then `Connect-XdrByBrowserExtension -TenantId <customer tenant ID>` (relay from the incognito window), then `./tools/agent/Save-XdrAgentSession.ps1 -InRepo`. That records no case lock, so pass `-CaseTenantId <customer tenant ID>` on every wrapper call.
+Manual fallback if the script route fails: `Import-Module ./XDRInternals/XDRInternals.psd1`, then `Connect-XdrByBrowserExtension -TenantId <customer tenant ID>` (relay from the signed-in portal window), then `./tools/agent/Save-XdrAgentSession.ps1 -InRepo`. That records no case lock, so pass `-CaseTenantId <customer tenant ID>` on every wrapper call.
 
 **Where the token lives.** `Save-XdrAgentSession.ps1` writes `<repo>/.xdr-agent/session.json` with `-InRepo`, or `~/.xdr-agent/session.json` by default. `.xdr-agent` is in `.gitignore` and `.dockerignore`, the file is locked to the current user, and the script refuses any path git would track. Never print, copy or commit its contents.
