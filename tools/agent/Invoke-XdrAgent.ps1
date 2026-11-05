@@ -17,7 +17,8 @@
 
         Exit codes: 0 ok, 1 the command threw, 2 non-terminating errors (partial results),
         3 refused by the write guard, 4 no or stale session, 5 tenant mismatch, 7 tenant guard,
-        6 not PowerShell 7.
+        6 not PowerShell 7, 8 hunt session timeout (HTTP 440 from a hunting endpoint while the
+        portal session still works; see .claude/skills/xdrinternals/reference/hunting-outage.md).
 
     .PARAMETER Command
         PowerShell to run, e.g. "Get-XdrIncident -IncidentId 123".
@@ -283,6 +284,23 @@ if ($huntProxy -notmatch 'Assert-XdrHuntTenants' -or $huntProxy -notmatch 'globa
 $global:XdrHuntProxy = [scriptblock]::Create($huntProxy)
 $tenantLeak = @()
 $notSearched = @()
+# HTTP 440 ("Session timeout") from a hunting endpoint: the portal session can still be valid
+# for every other cmdlet. Name it, so the caller switches route instead of re-relaying in a loop.
+$huntTimeout = $false
+$directMode = -not $CaseTenantId -or $CaseTenantId -eq $saved.TenantId
+$hasDirectHunt = [bool](Get-Command -Module XDRInternals -Name Invoke-XdrAdvancedHunting -ErrorAction SilentlyContinue)
+function Write-HuntTimeout([string]$Message) {
+    if ($Message -notmatch '\b440\b|Session ?timeout') { return $false }
+    if ($Message -match 'MTO') {
+        $next = if ($directMode -and $hasDirectHunt) { 'This case is in direct mode: hunt with Invoke-XdrAdvancedHunting, which uses the single-tenant endpoint on security.microsoft.com.' }
+        elseif ($directMode) { 'This checkout has no Invoke-XdrAdvancedHunting (direct route); update it, or use the portal fallback.' }
+        else { 'This is an MTO case, so the direct route would answer for the session tenant. Use the portal fallback, or a direct-mode standup in the customer tenant.' }
+        Write-Stderr "HUNT SESSION TIMEOUT (440): the multi-tenant endpoint (mto.security.microsoft.com) rejected the relayed session. $next Don't re-relay in a loop. See reference/hunting-outage.md."
+    } else {
+        Write-Stderr "HUNT SESSION TIMEOUT (440): the hunting endpoint rejected the session. Check Get-XdrTenantContext -Force; if that fails too, the portal session has expired: rerun the standup. See reference/hunting-outage.md."
+    }
+    return $true
+}
 
 # Run the command, keeping only real output on stdout
 $results = New-Object System.Collections.Generic.List[object]
@@ -305,6 +323,7 @@ try {
             }
         } elseif ($item -is [System.Management.Automation.ErrorRecord]) {
             Write-Stderr "[error] $item"
+            if (Write-HuntTimeout "$item") { $huntTimeout = $true }
             $exitCode = 2
         } else {
             # A hunt row carries TenantId and TenantName. Refuse any row from a tenant no hunt named.
@@ -321,7 +340,9 @@ try {
         Write-Stderr "The portal session looks expired or lacks permission. Ask the user to reconnect and rerun Save-XdrAgentSession.ps1."
     }
     $exitCode = if ($message -match 'TENANT GUARD') { 7 } else { 1 }
+    if ($exitCode -ne 7 -and (Write-HuntTimeout $message)) { $huntTimeout = $true }
 }
+if ($huntTimeout -and $exitCode -ne 7) { $exitCode = 8 }
 
 if ($tenantLeak) {
     Write-Stderr "TENANT GUARD: rows came back from tenants no hunt named: $(($tenantLeak | Select-Object -Unique) -join ', '). All results discarded."

@@ -35,6 +35,8 @@ const EXIT_MEANINGS = {
   4: 'no saved session, or it is stale - the user must sign in again and run tools/agent/Save-XdrAgentSession.ps1',
   5: 'tenant mismatch - stop and confirm the tenant with the user',
   6: 'not PowerShell 7',
+  7: 'tenant guard - stop and confirm the customer with the user',
+  8: 'hunt session timeout (HTTP 440 from a hunting endpoint while the portal session works) - in direct mode hunt with Invoke-XdrAdvancedHunting; otherwise use the portal fallback; do not re-relay in a loop',
 };
 
 function log(message) {

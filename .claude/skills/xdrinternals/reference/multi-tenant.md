@@ -17,6 +17,7 @@ What follows from that:
 - Each tenant can fail on its own (Conditional Access, MFA challenge, missing role, quota) while the others return rows. Seen in practice: `MfaChallengeRequired (Status: 588)` for one customer in a three-tenant sweep, with the other two answering normally.
 - Retention, onboarded tables and licensing differ by customer, so the same query has different reach in each.
 - Without `-TenantIds`, the module takes its tenant list from cache, which can be every tenant the analyst can reach.
+- The MTO endpoint can reject a relayed session with `440 Session timeout` while every single-tenant cmdlet works (wrapper exit 8). An estate sweep then can't run on the API; don't swap in per-tenant direct hunts, which answer only for the session tenant. See `hunting-outage.md`.
 - Hostnames, UPN formats, private IPs and names like `DC01` repeat across customers. `DeviceId`, incident and alert IDs are only unique inside a tenant.
 
 **What the Workbench enforces** (`tools/agent/Invoke-XdrAgent.ps1`):

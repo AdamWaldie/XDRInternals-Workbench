@@ -42,7 +42,7 @@ If neither is available, tell the user what's needed: either the MCP server in C
    - `pwsh -NoProfile -File tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId <id> -Command "<PowerShell>"`
    - For KQL or multi-line scripts, write a `.ps1` file under `investigations/<case>/` and use `-CommandFile` instead.
    - For large results add `-OutFile investigations/<case>/<name>.json`.
-4. stdout is JSON; stderr has the tenant banner and messages. Exit codes: `0` ok, `1` error, `2` partial, `3` refused by the write guard, `4` no or stale session, `5` tenant mismatch, `6` not PowerShell 7.
+4. stdout is JSON; stderr has the tenant banner and messages. Exit codes: `0` ok, `1` error, `2` partial, `3` refused by the write guard, `4` no or stale session, `5` tenant mismatch, `6` not PowerShell 7, `7` tenant guard (stop and confirm the customer), `8` hunt session timeout (HTTP 440 from a hunting endpoint while the session works: in direct mode hunt with `Invoke-XdrAdvancedHunting`; otherwise the portal fallback, run by the analyst; don't re-relay in a loop).
 5. The wrapper refuses state-changing cmdlets and response actions unless `-AllowWrite` is passed. Only pass it after the user approves that exact action. Never run `Connect-Xdr*` yourself.
 
 ## Playbooks

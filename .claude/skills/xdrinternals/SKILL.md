@@ -10,7 +10,7 @@ The Workbench repo (GitHub `AdamWaldie/XDRInternals-Workbench`) lets Claude quer
 Two roles, never mixed:
 
 - **The user** sets up the session on their own machine: one standup command in PowerShell 7, a portal sign-in, and a click on the relay extension. Installing PowerShell 7 and the extension is a one-time part of that.
-- **Claude** does everything else from the device shell: finds the repo, prepares its own tools, works out the customer and case, gives the user the exact commands, verifies the session, runs the queries, and tears down when asked. Claude never drives the browser, never reads or prints cookies or session files, and never runs `Connect-Xdr*`.
+- **Claude** does everything else from the device shell: finds the repo, prepares its own tools, works out the customer and case, gives the user the exact commands, verifies the session, runs the queries, and tears down when asked. Claude never reads or prints cookies or session files, and never runs `Connect-Xdr*`. Claude doesn't drive the browser either, with one exception: the portal hunting fallback in `reference/hunting-outage.md`, and only after the analyst has allowed it for that case.
 
 ## The flow
 
@@ -65,7 +65,7 @@ The script checks the session's tenant against the customer. If the portal lande
 pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json
 ```
 
-The session is working when `control hunt` is OK: the session, the case lock and the customer's data all line up. Tell the user in one line: account, session tenant, customer, mode, device count. Any FAIL: give the user the fix it prints, or see `reference/troubleshooting.md`.
+The session is working when `control hunt` is OK: the session, the case lock and the customer's data all line up. Always pass `-Live`: without it no hunting endpoint is called, so "No problems found" says nothing about hunting. In direct mode the control hunt uses the direct route, and a separate `mto hunt` row says whether estate sweeps would work. Tell the user in one line: account, session tenant, customer, mode, device count. Any FAIL: give the user the fix it prints, or see `reference/troubleshooting.md`.
 
 ### Step 6. Run queries (Claude)
 
@@ -75,11 +75,13 @@ Every call goes through the wrapper from `<repo>`:
 pwsh -NoProfile -File tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId <session tenant> -CommandFile <case folder>/queries/<name>.ps1 -OutFile <case folder>/evidence/<name>.json
 ```
 
-- KQL goes in a `.ps1` file as a here-string: `Invoke-XdrMtoAdvancedHunting -TenantIds '<case tenant>' -DaysAgo 30 -QueryText @'...'@`. Every hunt names the case tenant; the wrapper refuses anything else.
+- KQL goes in a `.ps1` file as a here-string. The route depends on the case mode in the Ready block or `case lock` row:
+  - **Direct mode** (session tenant = case tenant): `Invoke-XdrAdvancedHunting`, the single-tenant endpoint on security.microsoft.com, when the checkout has it (`Get-Help Invoke-XdrAdvancedHunting` for its parameters).
+  - **MTO mode**, or a checkout without the direct route: `Invoke-XdrMtoAdvancedHunting -TenantIds '<case tenant>' -DaysAgo 30 -QueryText @'...'@`. Every MTO hunt names the case tenant; the wrapper refuses anything else.
 - Queries can come from the user, a document, or other skills (`kql-engineer`, `threat-hunting`, `defender-log-sources` for table and field maps). Adapt them to Defender Advanced Hunting tables. `Timestamp`, not `TimeGenerated`, and `EntraIdSignInEvents`, not `AADSignInEventsBeta`. Sentinel-only tables need a workspace (`-SelectedWorkspaces`).
 - Before hunting, run a control and coverage check, so a "no results" means something. Afterwards, record each query, its window and row count in the case notes.
-- Exit codes: `0` ok, `2` partial or a tenant not searched, `3` write guard, `4` session missing or stale (repeat step 4), `5` wrong session tenant, `7` tenant guard (stop and confirm the customer).
-- Cmdlet usage for everything other than hunting: `reference/usage/INDEX.md`. Wrapper options, case order, incident-class table and KQL habits: `reference/hunting.md`. Hunting more than one customer: `reference/multi-tenant.md`.
+- Exit codes: `0` ok, `2` partial or a tenant not searched, `3` write guard, `4` session missing or stale (repeat step 4), `5` wrong session tenant, `7` tenant guard (stop and confirm the customer), `8` hunt session timeout (HTTP 440 from a hunting endpoint while the session still works). On `8`, follow `reference/hunting-outage.md`: switch route, or use the portal fallback. Don't re-relay in a loop.
+- Cmdlet usage for everything other than hunting: `reference/usage/INDEX.md`. Wrapper options, case order, incident-class table and KQL habits: `reference/hunting.md`. Hunting more than one customer: `reference/multi-tenant.md`. A hunt fails but the session works: `reference/hunting-outage.md`.
 
 ### Step 7. Tear down (Claude, only when asked)
 
