@@ -49,7 +49,7 @@ Send this, filled in with the repo path, customer and case:
 3. In that window, sign in if asked and wait for both tabs to load (the multi-tenant tab shows a tenant list).
 4. Click the **XDR Docker Relay** extension icon (version 1.2 or later), paste the pairing code, keep port 8787, and click **Relay session to container**. Do this within 5 minutes of the code appearing. The popup says whether the multi-tenant session came too.
 5. The script then runs a control hunt. If it fails, it names the cause and the fix (sign in again, complete an MFA prompt, open the multi-tenant tab), waits for Enter, and relays or retries itself, up to three times.
-6. At **Ready** it prints copy-paste commands and one JSON line headed "Paste this to Claude". The user pastes that line back. `"Status":"hunting-failed"` comes with a `Fix`: give the user that fix, and don't start querying.
+6. At **Ready** it prints the session, case and hunt-check result, then copy-paste commands for when something goes wrong: check the session (`Test-XdrWorkbench.ps1 -Live`), relay again into the open portal window (`-NoBrowser`), start again with a fresh window, and end the session (`Stop-XdrWorkbench.ps1`). The user tells Claude it's ready; there is nothing to paste back. If it ends with `Hunting: FAILED`, it prints a `Fix:` line and exits 2: the user applies the fix and runs the relay-again command before anything is queried.
 
 Use the normal Chrome profile, not Incognito. Cybanetix analyst accounts are under a Conditional Access policy that requires a compliant device, and an Incognito window carries no device identity. A session relayed from Incognito can read the portal but fails multi-tenant hunting with `AADSTS53000`. `-Incognito` exists for accounts without that policy.
 
@@ -68,7 +68,7 @@ The script checks the session's tenant against the customer. If the portal lande
 pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json
 ```
 
-The standup's JSON line already reports the hunt check (`HuntRoute`, `HuntCheck`, `MtoRoute`). Confirm it here. The session is working when `control hunt` is OK: the session, the case lock and the customer's data all line up. Always pass `-Live`: without it no hunting endpoint is called, so "No problems found" says nothing about hunting. In direct mode the control hunt uses the direct route, and a separate `mto hunt` row says whether estate sweeps would work. Tell the user in one line: account, session tenant, customer, mode, device count. Any FAIL: give the user the fix it prints, or see `reference/troubleshooting.md`.
+The standup stores its hunt check (`HuntRoute`, `HuntCheck`, `MtoRoute`) and the case folder (`CaseFolder`) in the case lock, which the `case lock` row reports; this run confirms it live. The session is working when `control hunt` is OK: the session, the case lock and the customer's data all line up. Always pass `-Live`: without it no hunting endpoint is called, so "No problems found" says nothing about hunting. In direct mode the control hunt uses the direct route, and a separate `mto hunt` row says whether estate sweeps would work. Tell the user in one line: account, session tenant, customer, mode, device count. Any FAIL: give the user the fix it prints, or see `reference/troubleshooting.md`.
 
 ### Step 6. Run queries (Claude)
 

@@ -105,7 +105,7 @@ foreach ($s in $sessions) {
 $caseFile = Join-Path $repoRoot '.xdr-agent/case.json'
 if (Test-Path $caseFile) {
     try { $c = Get-Content $caseFile -Raw | ConvertFrom-Json
-        if ($c.CaseTenantId) { Add-Check 'case lock' 'OK' "Hunts locked to $($c.CaseTenantName) ($($c.CaseTenantId)), mode $($c.Mode); estate sweeps need -AllowMultiTenant" }
+        if ($c.CaseTenantId) { Add-Check 'case lock' 'OK' ("Hunts locked to $($c.CaseTenantName) ($($c.CaseTenantId)), mode $($c.Mode), case $($c.Case)" + $(if ($c.CaseFolder) { ", folder $($c.CaseFolder)" }) + $(if ($c.HuntCheck) { ", standup hunt check $($c.HuntCheck)" }) + '; estate sweeps need -AllowMultiTenant') }
         else { Add-Check 'case lock' 'WARN' 'Case lock cleared' 'Run the standup for the case customer.' } }
     catch { Add-Check 'case lock' 'FAIL' "$caseFile unreadable" 'Rerun the standup, or remove the file with Stop-XdrWorkbench.ps1.' }
 } else { Add-Check 'case lock' 'WARN' 'No case lock recorded; hunts are only held to one tenant per call' 'Run the standup for the case tenant, or pass -CaseTenantId on every call.' }

@@ -7,7 +7,7 @@ For any Defender work (starting or ending a session, hunting, incidents, alerts,
 The essentials, in case nothing else is read:
 
 - Run every Defender command through `tools/agent/Invoke-XdrAgent.ps1` (PowerShell 7). Never call the module directly, never run `Connect-Xdr*`, and never open, print or commit `.xdr-agent/session.json`.
-- The analyst starts the session with `./tools/agent/Start-XdrWorkbench.ps1 -Tenant <customer> -Case <ref>` and pastes back its JSON line. Check it with `./tools/agent/Test-XdrWorkbench.ps1 -Live -Json` before querying.
+- The analyst starts the session with `./tools/agent/Start-XdrWorkbench.ps1 -Tenant <customer> -Case <ref>` and tells you when it reaches Ready (nothing is pasted back; the session and case lock are on disk). Check it with `./tools/agent/Test-XdrWorkbench.ps1 -Live -Json` before querying.
 - One customer per case. The wrapper enforces the case lock (exit 7), refuses state changes without the analyst's approval (exit 3), and names hunting failures (exit 8; see `.claude/skills/xdrinternals/reference/hunting-outage.md`).
 - Case data stays under `investigations/` (git-ignored).
 

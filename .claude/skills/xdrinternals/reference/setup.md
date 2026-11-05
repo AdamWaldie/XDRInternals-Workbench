@@ -82,7 +82,7 @@ When the user asks to start, set up or connect a session, run this section. The 
 1. Claude checks conditions 1 to 3 first, before asking the user for anything: find the repo, `cd "<repo>"`, run `bash tools/agent/setup.sh`, and use the pwsh path it prints. Fix what can be fixed from the shell; report the rest.
 2. Claude settles the customer (below) and the case reference.
 3. Claude gives the user the runbook (below), which covers conditions 4 to 6.
-4. When the user pastes back the "Ready" block, Claude runs `pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json` from `<repo>`. Every FAIL goes to `troubleshooting.md`. When the control hunt passes, Claude reports in one line: account, session tenant, case lock (customer and ID), devices in the control hunt, and session age. Then it passes `-ExpectTenantId <session tenant>` on every later call.
+4. When the user says the standup reached "Ready" (nothing is pasted back), Claude runs `pwsh -NoProfile -File tools/agent/Test-XdrWorkbench.ps1 -Live -Json` from `<repo>`. Every FAIL goes to `troubleshooting.md`. When the control hunt passes, Claude reports in one line: account, session tenant, case lock (customer and ID), devices in the control hunt, and session age. The `case lock` row names the case folder. Then it passes `-ExpectTenantId <session tenant>` on every later call.
 
 **Pick the tenant.** Ask which customer if the user hasn't said. `./tools/agent/Start-XdrWorkbench.ps1 -ListTenants` (or reading `tenants.local.csv`) shows the choices. The script accepts a full name, a unique part of a name, or a tenant ID, and lists the candidates when a name is ambiguous. Never carry a tenant over from an earlier case or example.
 

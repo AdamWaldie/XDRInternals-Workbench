@@ -141,8 +141,15 @@ function Invoke-Relay {
     Write-Host "Signed in: $($c.AuthInfo.TenantName) | $($c.AuthInfo.TenantId) | as $($c.AuthInfo.UserName)"
     $c
 }
+# The case folder path goes in the case lock, so the agent finds it without being told.
+$folder = $null
+if (-not $NoCaseFolder) {
+    $short = (($target.Name -replace '(?i)\b(ltd|limited|plc|llp|group)\b', '') -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLower()
+    $caseSafe = ($Case -replace '[^A-Za-z0-9_-]+', '-').Trim('-')
+    $folder = Join-Path $repoRoot ("investigations/{0}-{1}-{2}" -f (Get-Date -Format 'yyyy-MM-dd'), $short, $caseSafe)
+}
 function Write-CaseLock([hashtable]$Extra = @{}) {
-    $lock = [ordered]@{ CaseTenantId = $target.TenantId; CaseTenantName = $target.Name; SessionTenantId = $liveId; Case = $Case; Mode = $mode; SetUtc = (Get-Date).ToUniversalTime().ToString('o') }
+    $lock = [ordered]@{ CaseTenantId = $target.TenantId; CaseTenantName = $target.Name; SessionTenantId = $liveId; Case = $Case; CaseFolder = $folder; Mode = $mode; SetUtc = (Get-Date).ToUniversalTime().ToString('o') }
     foreach ($k in $Extra.Keys) { $lock[$k] = $Extra[$k] }
     $lock | ConvertTo-Json | Set-Content -Path (Join-Path $repoRoot '.xdr-agent/case.json') -Encoding utf8
 }
@@ -209,9 +216,6 @@ if (-not $NoHuntCheck) {
 
 if (-not $NoCaseFolder) {
     Step 'Case folder'
-    $short = (($target.Name -replace '(?i)\b(ltd|limited|plc|llp|group)\b', '') -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLower()
-    $caseSafe = ($Case -replace '[^A-Za-z0-9_-]+', '-').Trim('-')
-    $folder = Join-Path $repoRoot ("investigations/{0}-{1}-{2}" -f (Get-Date -Format 'yyyy-MM-dd'), $short, $caseSafe)
     $null = New-Item -ItemType Directory -Path (Join-Path $folder 'queries'), (Join-Path $folder 'evidence') -Force
     $notes = Join-Path $folder 'case-notes.md'
     if (-not (Test-Path $notes)) {
@@ -246,29 +250,36 @@ Window (UTC):
 }
 
 Step 'Ready'
-$huntState = if ($NoHuntCheck) { 'not checked (-NoHuntCheck)' } elseif ($hunt.Ok) { "$($hunt.Route) route OK ($($hunt.Devices) devices in the last day)" } else { "FAILED: $($hunt.Kind). $($hunt.Fix)" }
+$huntState = if ($NoHuntCheck) { 'not checked (-NoHuntCheck)' } elseif ($hunt.Ok) { "$($hunt.Route) route OK ($($hunt.Devices) devices in the last day)" } else { "FAILED: $($hunt.Kind)" }
 Write-Host "Session:  $liveName ($liveId) as $($ctx.AuthInfo.UserName)"
 Write-Host "Case:     $($target.Name) ($($target.TenantId)), mode $mode, case $Case"
+if ($folder) { Write-Host "Folder:   $folder" }
 Write-Host "Hunting:  $huntState" -ForegroundColor $(if ($hunt.Ok) { 'Green' } elseif ($NoHuntCheck) { 'Gray' } else { 'Red' })
+if ($hunt -and -not $hunt.Ok) { Write-Host "Fix:      $($hunt.Fix)" -ForegroundColor Yellow }
+
+# Commands for when something goes wrong, and for ending the session. Each line is complete,
+# so it can be copied as it stands into PowerShell 7 in this folder.
+$rerun = "./tools/agent/Start-XdrWorkbench.ps1 -Tenant '$($target.TenantId)' -Case '$($Case -replace "'", "''")'"
+if ($Port -ne 8787) { $rerun += " -Port $Port" }
+if ($Incognito) { $rerun += ' -Incognito' }
+$portArg = if ($Port -ne 8787) { " -Port $Port" } else { '' }
+function Cmd([string]$Label, [string]$Line) { [pscustomobject]@{ Label = $Label; Line = $Line } }
+$commands = @(
+    Cmd 'Check the session, and print a fix for anything wrong:' "./tools/agent/Test-XdrWorkbench.ps1 -Live$portArg"
+    Cmd 'Session expired or hunting stopped, portal window still open (relay again):' "$rerun -NoBrowser"
+    Cmd 'Start again with a fresh portal window:' $rerun
+    Cmd 'End the session (clears the saved session and case lock; keeps investigations/):' './tools/agent/Stop-XdrWorkbench.ps1'
+    if ($IsWindows) { Cmd 'End the session and remove the relay port reservation (elevated window):' "./tools/agent/Stop-XdrWorkbench.ps1 -RemoveUrlAcl$portArg" }
+)
 Write-Host ''
-Write-Host 'Copy-paste commands (PowerShell 7, in this folder):' -ForegroundColor Cyan
-$controlHunt = "Invoke-XdrMtoAdvancedHunting -TenantIds '$($target.TenantId)' -DaysAgo 1 -QueryText 'DeviceInfo | summarize Devices = dcount(DeviceId)'"
-@(
-    './tools/agent/Test-XdrWorkbench.ps1 -Live'
-    "./tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId $liveId -Command `"$controlHunt`""
-    $(if ($mode -eq 'direct') { "./tools/agent/Invoke-XdrAgent.ps1 -ExpectTenantId $liveId -Command `"Get-XdrIncident -LookBackInDays 7 -PageSize 5`"" })
-    './tools/agent/Stop-XdrWorkbench.ps1'
-) | Where-Object { $_ } | ForEach-Object { Write-Host $_ }
+Write-Host 'If something goes wrong (PowerShell 7, in this folder):' -ForegroundColor Cyan
+# Labels print as PowerShell comments, so copying several lines at once is harmless too.
+foreach ($cmd in $commands) { Write-Host "# $($cmd.Label)" -ForegroundColor DarkGray; Write-Host $cmd.Line }
 Write-Host ''
-Write-Host 'Paste this to Claude:' -ForegroundColor Cyan
-[ordered]@{
-    Status = $(if ($NoHuntCheck -or $hunt.Ok) { 'ready' } else { 'hunting-failed' })
-    Account = "$($ctx.AuthInfo.UserName)"; SessionTenant = "$liveName ($liveId)"; CaseTenant = "$($target.Name) ($($target.TenantId))"
-    Mode = $mode; Case = $Case; CaseFolder = $folder
-    HuntRoute = $(if ($hunt.Ok) { $hunt.Route } else { $null }); HuntCheck = $(if ($hunt) { $hunt.Kind } else { 'not checked' })
-    MtoRoute = $(if ($hunt.Route -eq 'mto') { $hunt.Kind } elseif ($mtoProbe) { $mtoProbe.Kind } else { 'not checked' })
-    Fix = $(if ($hunt -and -not $hunt.Ok) { $hunt.Fix } else { $null })
-    ExpectTenantId = "$liveId"
-} | ConvertTo-Json -Compress | Write-Host
-Write-Host "The session stays saved until you clear it with the Stop command above."
+if ($NoHuntCheck -or $hunt.Ok) {
+    Write-Host 'Back in Claude, say the session is ready. Claude reads the session and case lock itself; there is nothing to paste.' -ForegroundColor Cyan
+} else {
+    Write-Host 'Hunting is not working yet. Apply the fix above, then run the relay-again command.' -ForegroundColor Yellow
+}
+Write-Host 'The session stays saved until you run the end-the-session command.'
 if ($hunt -and -not $hunt.Ok) { exit 2 }
