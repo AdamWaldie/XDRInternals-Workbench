@@ -107,4 +107,4 @@ pwsh -NoProfile -File claude-desktop/build-workbench-skill.ps1   # dist/xdrinter
 pwsh -NoProfile -File claude-desktop/build-workbench-skill.ps1 -InstallCodex   # also into ~/.codex/skills
 ```
 
-Upload the zip in Claude under Settings > Capabilities > Skills, replacing the old `xdrinternals-workbench`. Codex also reads `<repo>/AGENTS.md`, which points here. `claude-desktop/build-skill.ps1` builds the separate Chat/Cowork skill.
+Upload the zip in Claude under Settings > Capabilities > Skills, replacing the old `xdrinternals-workbench`. Codex also reads `<repo>/AGENTS.md`, which points here.
