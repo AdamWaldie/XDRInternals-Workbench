@@ -7,15 +7,40 @@ const els = {
     listener: document.getElementById('listener'),
 };
 
-// The standup's listener (Connect-XdrByBrowserExtension) takes the first free port in this range,
-// and binds to "+" or, on Windows without a URL reservation, to "localhost". Both hosts are tried.
+// The standup's listener (Connect-XdrByBrowserExtension) takes the first free port in this range
+// and binds to 127.0.0.1 (older standups bound "+" or "localhost"). Both hosts are tried.
 const DEFAULT_PORTS = Array.from({ length: 10 }, (_, i) => 8787 + i);
 const HOSTS = ['127.0.0.1', 'localhost'];
 const PAIRING_CODE = /^[0-9a-f]{12}$/;
 
-const NOTHING_LISTENING = 'Nothing on this computer is waiting for a relay (checked 127.0.0.1 and localhost, ports 8787-8796). ' +
+const NOTHING_LISTENING = 'Nothing on this computer is waiting for a relay. ' +
     'Run ./tools/agent/Start-XdrWorkbench.ps1 in PowerShell 7 on this computer, keep that window open, and relay within 5 minutes of the code appearing. ' +
+    'If the standup is waiting, open the health URL it prints (http://127.0.0.1:<port>/health) in a Chrome tab: if that shows xdr-workbench-relay, Chrome is blocking the extension, otherwise the listener is not answering. ' +
     'If Claude runs in the cloud (claude.ai/code or the Claude app without a connected computer), a relay can never reach it: use Claude Code on this computer.';
+
+// Turns a failed probe into a short reason, so "nothing is waiting" says what actually happened.
+function probeError(err) {
+    if (err && err.name === 'AbortError') { return 'no answer within 1.5 s'; }
+    const msg = err && err.message ? err.message : String(err);
+    return msg === 'Failed to fetch' ? 'connection refused or blocked (Failed to fetch)' : msg;
+}
+
+function portList(ports) {
+    const sorted = [...ports].sort((a, b) => a - b);
+    const contiguous = sorted.every((p, i) => i === 0 || p === sorted[i - 1] + 1);
+    return contiguous && sorted.length > 2 ? `${sorted[0]}-${sorted[sorted.length - 1]}` : sorted.join(', ');
+}
+
+// "127.0.0.1: connection refused or blocked (Failed to fetch) on 8787-8796; localhost: ..."
+function summarizeErrors(errors) {
+    const groups = new Map();
+    for (const e of errors) {
+        const key = `${e.host}\u0000${e.reason}`;
+        if (!groups.has(key)) { groups.set(key, { host: e.host, reason: e.reason, ports: [] }); }
+        groups.get(key).ports.push(e.port);
+    }
+    return [...groups.values()].map((g) => `${g.host}: ${g.reason} on ${portList(g.ports)}`).join('; ');
+}
 
 function manualPort() {
     const value = parseInt(els.port.value, 10);
@@ -39,11 +64,13 @@ async function findListeners() {
     const typed = manualPort();
     const ports = typed ? [typed] : DEFAULT_PORTS;
     const probes = [];
+    const errors = [];
     for (const port of ports) {
         for (const host of HOSTS) {
             probes.push((async () => {
+                const url = `http://${host}:${port}/health`;
                 try {
-                    const res = await fetchWithTimeout(`http://${host}:${port}/health`);
+                    const res = await fetchWithTimeout(url);
                     if (res.ok) {
                         const body = await res.json().catch(() => null);
                         if (body && body.service === 'xdr-workbench-relay') {
@@ -53,8 +80,10 @@ async function findListeners() {
                     if (typed && res.status === 404) {
                         return { host, port, secondsLeft: null, legacy: true };
                     }
+                    errors.push({ host, port, reason: res.ok ? 'answered, but not the Workbench relay' : `HTTP ${res.status}` });
                 } catch (err) {
-                    // Connection refused, timeout or a host binding that doesn't answer: not a listener.
+                    errors.push({ host, port, reason: probeError(err) });
+                    console.debug(`Relay probe ${url} failed:`, err);
                 }
                 return null;
             })());
@@ -66,12 +95,13 @@ async function findListeners() {
     for (const l of found) {
         if (!byPort.has(l.port)) { byPort.set(l.port, l); }
     }
-    return [...byPort.values()];
+    return { listeners: [...byPort.values()], errors };
 }
 
-function describeListeners(listeners) {
+function describeListeners({ listeners, errors }) {
     if (!listeners.length) {
-        return { ok: false, text: 'No standup is waiting on this computer. Run Start-XdrWorkbench.ps1 in PowerShell 7 here first.' };
+        const detail = errors.length ? ` Checked: ${summarizeErrors(errors)}.` : '';
+        return { ok: false, text: `No standup is waiting on this computer. Run Start-XdrWorkbench.ps1 in PowerShell 7 here first.${detail}` };
     }
     const parts = listeners.map((l) => {
         if (l.secondsLeft === null || l.secondsLeft === undefined) { return `port ${l.port}`; }
@@ -190,9 +220,9 @@ els.send.addEventListener('click', async () => {
     try {
         // Find the listener before touching any cookie, so a missing standup is named as such
         // rather than surfacing as the browser's bare "Failed to fetch".
-        const listeners = await findListeners();
+        const { listeners, errors } = await findListeners();
         if (!listeners.length) {
-            throw new Error(NOTHING_LISTENING);
+            throw new Error(`${NOTHING_LISTENING} Checked: ${summarizeErrors(errors)}.`);
         }
 
         els.status.textContent = 'Reading session cookie...';

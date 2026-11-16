@@ -72,7 +72,7 @@ Use the normal Chrome profile, not Incognito. Cybanetix analyst accounts are und
 First time on a machine, add before step 1:
 - **PowerShell 7:** `winget install Microsoft.PowerShell`.
 - **Relay extension:** in Chrome open `chrome://extensions`, turn on Developer mode, click **Load unpacked**, pick `<repo>\chrome-ext`, and pin the icon. If it's already loaded, click its reload arrow after a repo update.
-- **Port reservation** (optional, in an elevated PowerShell, once): `netsh http add urlacl url=http://+:8787/ user="$env:USERDOMAIN\$env:USERNAME"`. Without it the listener binds to localhost, which the extension also finds. "Error: 183" means it already exists.
+- **No port reservation needed:** the relay listener is a plain TCP socket on 127.0.0.1 (not HTTP.sys), so `netsh http add urlacl` is no longer used. An old reservation is harmless; `Stop-XdrWorkbench.ps1 -RemoveUrlAcl` (elevated) removes it.
 
 The script checks the session's tenant against the customer. If the portal landed in another tenant that has the customer in its MTO list, it sets an MTO case lock automatically: hunting works, and single-tenant cmdlets are refused because they would answer for the other tenant. If the customer isn't reachable, nothing is saved; the user switches to the customer in the portal and reruns.
 

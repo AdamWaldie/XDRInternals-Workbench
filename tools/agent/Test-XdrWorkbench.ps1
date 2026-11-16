@@ -56,14 +56,11 @@ $list = @(Get-XdrTenantList -RepoRoot $repoRoot)
 if ($list.Count) { Add-Check 'tenants' 'OK' "$($list.Count) tenants known ($(if (Test-Path (Join-Path $repoRoot 'tenants.local.csv')) { 'tenants.local.csv' } else { 'tenants.txt' }))" }
 else { Add-Check 'tenants' 'WARN' 'No tenant list found' 'After a standup, export Get-XdrMtoTenantList to tenants.local.csv (Name,TenantId).' }
 
-# Relay port and URL reservation
+# Relay port
 $busy = @(Get-XdrPortListener -Port $Port)
 if ($busy) { Add-Check 'relay port' 'WARN' "Port $Port in use by $($busy.Process -join ', ') (PID $($busy.Pid -join ', '))" 'The standup moves to the next free port up to 8796 and extension 1.3+ finds it; close the earlier listener if it is a stale standup.' }
 else { Add-Check 'relay port' 'OK' "Port $Port free" }
-if ($IsWindows) {
-    if ((netsh http show urlacl url=http://+:$Port/ | Out-String) -match "http://\+:$Port/") { Add-Check 'url reservation' 'OK' "http://+:$Port/ reserved" }
-    else { Add-Check 'url reservation' 'WARN' "No reservation for http://+:$Port/; the listener falls back to localhost, which extension 1.3+ finds" "To bind all interfaces, elevated, once: netsh http add urlacl url=http://+:$Port/ user=`"$env:USERDOMAIN\$env:USERNAME`"" }
-}
+# The relay listener binds 127.0.0.1 on a plain TCP socket, so no HTTP.sys URL reservation is needed.
 
 # Chrome and the relay extension
 if ($IsWindows -or $IsMacOS) {

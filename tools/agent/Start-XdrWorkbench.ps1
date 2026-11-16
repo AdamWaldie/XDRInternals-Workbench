@@ -11,8 +11,7 @@
           1. Checks PowerShell 7 and loads the module from this checkout.
           2. Resolves -Tenant (name, partial name or tenant ID) against tenants.local.csv or the
              MTO section of tenants.txt. Run with -ListTenants to see the choices.
-          3. On Windows, checks the HTTP.sys URL reservation the relay listener needs, and adds it
-             when the window is elevated.
+          3. Checks the relay port. The listener binds to 127.0.0.1 and needs no URL reservation.
           4. Opens a normal Chrome window (Incognito with -Incognito) with the target tenant's
              Advanced Hunting page and the multi-tenant portal. The relay reads the portal cookie
              from the window you click it in, so sign in there.
@@ -110,16 +109,7 @@ $url = "https://security.microsoft.com/v2/advanced-hunting?tid=$($target.TenantI
 # that session too, so MTO hunting doesn't answer "440 Session timeout".
 $mtoUrl = 'https://mto.security.microsoft.com/'
 
-if ($IsWindows) {
-    Step "Relay listener URL reservation (port $Port)"
-    $reserved = (netsh http show urlacl url=http://+:$Port/ | Out-String) -match "http://\+:$Port/"
-    if ($reserved) { Write-Host 'Reserved.' }
-    else {
-        $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if ($elevated) { netsh http add urlacl url=http://+:$Port/ user="$env:USERDOMAIN\$env:USERNAME" | Out-Null; Write-Host 'Added.' }
-        else { Write-Host "Not reserved; the listener will bind to localhost instead, which extension 1.3+ finds. (To reserve it, once, elevated: netsh http add urlacl url=http://+:$Port/ user=`"$env:USERDOMAIN\$env:USERNAME`")" -ForegroundColor Yellow }
-    }
-}
+# The relay listener is a plain TCP socket on 127.0.0.1 (not HTTP.sys), so it needs no URL reservation.
 $busy = @(Get-XdrPortListener -Port $Port)
 if ($busy) {
     $owner = "$($busy.Process -join ', ') (PID $($busy.Pid -join ', '))"
