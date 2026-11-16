@@ -30,11 +30,15 @@
         extension's popup. The listener accepts exactly one correctly-paired request and then
         stops, so a leaked or reused code has a single, short window in which it is valid.
 
-        The listener itself binds to all interfaces inside the container; the "only reachable
-        from this machine" guarantee comes from publishing the port to the host's loopback
-        interface only when starting the container, e.g. `-p 127.0.0.1:8787:8787` (a bind
-        address of 127.0.0.1 inside the container would not receive Docker's published
-        traffic, which arrives via the container's bridge interface).
+        The listener is a minimal HTTP server on a plain TCP socket, not HTTP.sys/HttpListener:
+        on some Windows machines HTTP.sys accepts the connection but never hands the request to
+        a queue owned by a user PowerShell process, so the extension saw nothing listening. On
+        the host it binds to 127.0.0.1 only, which needs no URL reservation. Inside a container
+        it binds to all interfaces, because Docker delivers published traffic via the bridge
+        interface; the "only reachable from this machine" guarantee then comes from publishing
+        the port to the host's loopback only, e.g. `-p 127.0.0.1:8787:8787`. Either way it only
+        answers requests whose Host is 127.0.0.1, localhost or [::1], so a web page cannot reach
+        it through DNS rebinding.
 
     .PARAMETER Port
         The port to listen on. When omitted, the first free port from 8787 to 8796 is used, and
@@ -101,147 +105,215 @@
         $inContainer = (Test-Path '/.dockerenv') -or (Test-Path '/run/.containerenv')
         $candidatePorts = if ($PSBoundParameters.ContainsKey('Port') -or $inContainer) { @($Port) } else { 8787..8796 }
 
-        # Binds to all interfaces ("+") first. In Docker, `-p 127.0.0.1:<port>:<port>` delivers
-        # published traffic to the container's bridge interface, not its loopback, so a listener
-        # bound only to 127.0.0.1 would never see it; the "loopback only" guarantee comes from that
-        # `-p` binding on the host side. On Windows, "+" needs an HTTP.sys URL reservation
-        # (netsh http add urlacl); without one, fall back to "localhost", which HTTP.sys lets any
-        # user register and which still only answers local requests. Extension 1.3+ tries both
-        # 127.0.0.1 and localhost, so either binding is found.
+        # A plain TCP listener rather than HttpListener: HTTP.sys can accept a connection and then
+        # never deliver it to a request queue owned by a user PowerShell process (seen with a
+        # third-party firewall), which left the extension reporting "nothing is waiting". On the
+        # host bind 127.0.0.1 only. In Docker, `-p 127.0.0.1:<port>:<port>` delivers published
+        # traffic to the container's bridge interface, so bind all interfaces there; the
+        # "loopback only" guarantee then comes from that `-p` binding on the host side.
+        $bindAddress = if ($inContainer) { [System.Net.IPAddress]::Any } else { [System.Net.IPAddress]::Loopback }
         $listener = $null
-        $boundPrefix = $null
         $bindErrors = [System.Collections.Generic.List[string]]::new()
         foreach ($candidatePort in $candidatePorts) {
-            $prefixes = @("http://+:$candidatePort/")
-            if ($IsWindows -or $null -eq $IsWindows) { $prefixes += "http://localhost:$candidatePort/" }
-            foreach ($prefix in $prefixes) {
-                $attempt = [System.Net.HttpListener]::new()
-                $attempt.Prefixes.Add($prefix)
-                try {
-                    $attempt.Start()
-                    $listener = $attempt
-                    $boundPrefix = $prefix
-                    $Port = $candidatePort
-                    break
-                } catch {
-                    $bindErrors.Add("${prefix}: $($_.Exception.Message)")
-                    try { $attempt.Close() } catch { Write-Verbose "Ignoring listener cleanup error: $($_.Exception.Message)" }
-                }
+            if ($IsWindows -and (Get-NetTCPConnection -LocalPort $candidatePort -State Listen -ErrorAction SilentlyContinue)) {
+                $bindErrors.Add("${candidatePort}: already in use")
+                continue
             }
-            if ($listener) { break }
+            $attempt = [System.Net.Sockets.TcpListener]::new($bindAddress, $candidatePort)
+            if ($IsWindows) { $attempt.ExclusiveAddressUse = $true }
+            try {
+                $attempt.Start()
+                $listener = $attempt
+                $Port = $candidatePort
+                break
+            } catch {
+                $bindErrors.Add("${candidatePort}: $($_.Exception.Message)")
+                try { $attempt.Stop() } catch { Write-Verbose "Ignoring listener cleanup error: $($_.Exception.Message)" }
+            }
         }
         if (-not $listener) {
             $tried = ($candidatePorts | ForEach-Object { "$_" }) -join ', '
-            throw ("Failed to listen on port(s) $tried. Another Connect-XdrByBrowserExtension or program may hold the port; close it, " +
-                "or on Windows add the URL reservation once from an elevated PowerShell: netsh http add urlacl url=http://+:$($candidatePorts[0])/ " +
-                "user=`"$env:USERDOMAIN\$env:USERNAME`". Details: $($bindErrors -join ' | ')")
+            throw ("Failed to listen on port(s) $tried. Another Connect-XdrByBrowserExtension or program holds the port; close it, " +
+                "or leave out -Port so the next free port is used. Details: $($bindErrors -join ' | ')")
         }
-        Write-Verbose "Relay listener bound to $boundPrefix"
 
         $pairingCode = [guid]::NewGuid().ToString('N').Substring(0, 12)
         $expectedAuthHeader = "Bearer $pairingCode"
         $expiresAt = (Get-Date).AddSeconds($TimeoutSeconds)
 
+        $healthUrl = "http://127.0.0.1:$Port/health"
+        if ($inContainer) {
+            Write-Host "Relay listener bound to 0.0.0.0:$Port inside the container (publish it to the host's loopback only: -p 127.0.0.1:${Port}:$Port)."
+        } else {
+            Write-Host "Relay listener bound to 127.0.0.1:$Port (loopback only)."
+        }
+        Write-Host "The extension checks $healthUrl and relays to http://127.0.0.1:$Port/relay. Opening $healthUrl in Chrome should show xdr-workbench-relay."
         Write-Host "Waiting for the XDR Docker Relay browser extension."
         Write-Host "  1. Open the extension's popup in Chrome, in the window signed in to Microsoft Defender XDR."
         Write-Host "  2. Paste this pairing code: $pairingCode"
         Write-Host "  3. Click 'Relay session to container'. Extension 1.3+ finds port $Port by itself; older versions need the port set to $Port."
         Write-Host ("Listening on port {0}. Relay before {1:HH:mm:ss} ({2} seconds); after that, rerun for a new code." -f $Port, $expiresAt, $TimeoutSeconds)
 
+        # Reads one HTTP/1.1 request (request line, headers, Content-Length body) from the stream.
+        $readRequest = {
+            param([System.IO.Stream]$Stream)
+            $buffer = [System.IO.MemoryStream]::new()
+            $chunk = [byte[]]::new(8192)
+            $headerEnd = -1
+            $text = ''
+            while ($headerEnd -lt 0) {
+                $read = $Stream.Read($chunk, 0, $chunk.Length)
+                if ($read -le 0) { return $null }
+                $buffer.Write($chunk, 0, $read)
+                if ($buffer.Length -gt 32KB) { throw 'Request headers are too large.' }
+                # Latin-1 maps each byte to one char, so char offsets are byte offsets.
+                $text = [System.Text.Encoding]::GetEncoding(28591).GetString($buffer.GetBuffer(), 0, [int]$buffer.Length)
+                $headerEnd = $text.IndexOf("`r`n`r`n")
+            }
+            $lines = $text.Substring(0, $headerEnd) -split "`r`n"
+            $requestLine = $lines[0] -split ' '
+            if ($requestLine.Count -lt 3) { throw 'Malformed request line.' }
+            $headers = @{}
+            foreach ($line in ($lines | Select-Object -Skip 1)) {
+                $colon = $line.IndexOf(':')
+                if ($colon -gt 0) { $headers[$line.Substring(0, $colon).Trim()] = $line.Substring($colon + 1).Trim() }
+            }
+            $contentLength = 0
+            if ($headers['Content-Length'] -and -not [int]::TryParse($headers['Content-Length'], [ref]$contentLength)) { throw 'Invalid Content-Length.' }
+            if ($contentLength -lt 0 -or $contentLength -gt 1MB) { throw 'Request body is too large.' }
+            $bodyStart = $headerEnd + 4
+            while (($buffer.Length - $bodyStart) -lt $contentLength) {
+                $read = $Stream.Read($chunk, 0, $chunk.Length)
+                if ($read -le 0) { throw 'Connection closed before the request body arrived.' }
+                $buffer.Write($chunk, 0, $read)
+            }
+            [pscustomobject]@{
+                Method  = $requestLine[0].ToUpperInvariant()
+                Path    = ($requestLine[1] -split '\?', 2)[0]
+                Headers = $headers
+                Body    = [System.Text.Encoding]::UTF8.GetString($buffer.GetBuffer(), $bodyStart, $contentLength)
+            }
+        }
+
+        $reasons = @{ 200 = 'OK'; 204 = 'No Content'; 400 = 'Bad Request'; 401 = 'Unauthorized'; 404 = 'Not Found'; 500 = 'Internal Server Error' }
+        $sendResponse = {
+            param([System.IO.Stream]$Stream, [int]$Status, [string]$Body, [hashtable]$Extra)
+            $bodyBytes = if ($Body) { [System.Text.Encoding]::UTF8.GetBytes($Body) } else { [byte[]]::new(0) }
+            $head = [System.Text.StringBuilder]::new()
+            [void]$head.Append("HTTP/1.1 $Status $($reasons[$Status])`r`n")
+            if ($Body) { [void]$head.Append("Content-Type: application/json`r`n") }
+            [void]$head.Append("Content-Length: $($bodyBytes.Length)`r`nCache-Control: no-store`r`nConnection: close`r`n")
+            if ($Extra) { foreach ($k in $Extra.Keys) { [void]$head.Append("${k}: $($Extra[$k])`r`n") } }
+            [void]$head.Append("`r`n")
+            $headBytes = [System.Text.Encoding]::ASCII.GetBytes($head.ToString())
+            $Stream.Write($headBytes, 0, $headBytes.Length)
+            if ($bodyBytes.Length) { $Stream.Write($bodyBytes, 0, $bodyBytes.Length) }
+            $Stream.Flush()
+        }
+
         $deadline = $expiresAt
         $relayPayload = $null
+        $seenByExtension = $false
 
         try {
             while ((Get-Date) -lt $deadline) {
-                $asyncResult = $listener.BeginGetContext($null, $null)
-                $remainingMs = [Math]::Max(500, ($deadline - (Get-Date)).TotalMilliseconds)
-
-                if (-not $asyncResult.AsyncWaitHandle.WaitOne([int]$remainingMs)) {
-                    break
+                # Wait in short slices so Ctrl+C still stops the standup.
+                $acceptTask = $listener.AcceptTcpClientAsync()
+                while (-not $acceptTask.Wait(500)) {
+                    if ((Get-Date) -ge $deadline) { break }
                 }
+                if (-not $acceptTask.IsCompleted) { break }
 
-                $context = $listener.EndGetContext($asyncResult)
-                $request = $context.Request
-                $response = $context.Response
-
+                $client = $acceptTask.Result
+                $stream = $null
                 try {
-                    # Extension 1.3+ fetches with host permissions and needs no CORS; older
-                    # versions, or a fetch to "localhost" before the extension is reloaded, go
-                    # through CORS. Allow only extension origins, never web pages.
-                    $origin = $request.Headers['Origin']
-                    if ($origin -and $origin -match '^(chrome|moz|ms-browser)-extension://') {
-                        $response.AddHeader('Access-Control-Allow-Origin', $origin)
-                        $response.AddHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-                        $response.AddHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type')
-                        $response.AddHeader('Access-Control-Allow-Private-Network', 'true')
-                        $response.AddHeader('Vary', 'Origin')
+                    $client.ReceiveTimeout = 5000
+                    $client.SendTimeout = 5000
+                    $stream = $client.GetStream()
+                    try {
+                        $request = & $readRequest $stream
+                    } catch {
+                        Write-Verbose "Rejected a malformed request: $($_.Exception.Message)"
+                        & $sendResponse $stream 400
+                        continue
+                    }
+                    if (-not $request) { continue }
+
+                    # Only loopback host names: a web page that rebinds its own DNS name to
+                    # 127.0.0.1 would send its own name here.
+                    $hostName = ($request.Headers['Host'] -replace ':\d+$', '').ToLowerInvariant()
+                    if ($hostName -notin @('127.0.0.1', 'localhost', '[::1]')) {
+                        Write-Verbose "Rejected a request for host '$($request.Headers['Host'])'."
+                        & $sendResponse $stream 400
+                        continue
                     }
 
-                    if ($request.HttpMethod -eq 'OPTIONS') {
-                        $response.StatusCode = 204
+                    # Extension 1.3+ fetches with host permissions and needs no CORS; older
+                    # versions go through CORS. Allow only extension origins, never web pages.
+                    $cors = @{}
+                    $origin = $request.Headers['Origin']
+                    if ($origin -and $origin -match '^(chrome|moz|ms-browser)-extension://[A-Za-z0-9-]+$') {
+                        $cors['Access-Control-Allow-Origin'] = $origin
+                        $cors['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+                        $cors['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
+                        $cors['Access-Control-Allow-Private-Network'] = 'true'
+                        $cors['Vary'] = 'Origin'
+                    }
+
+                    if ($request.Method -eq 'OPTIONS') {
+                        & $sendResponse $stream 204 $null $cors
                         continue
                     }
 
                     # Unauthenticated liveness probe for the extension, so it can find the
                     # listener's port and say "nothing is listening" instead of "Failed to fetch".
                     # Reveals nothing but that a relay is waiting and until when.
-                    if ($request.HttpMethod -eq 'GET' -and $request.Url.AbsolutePath -eq '/health') {
+                    if ($request.Method -eq 'GET' -and $request.Path -eq '/health') {
                         $health = [ordered]@{
-                            service    = 'xdr-workbench-relay'
-                            version    = 2
-                            port       = $Port
-                            expiresUtc = $expiresAt.ToUniversalTime().ToString('o')
+                            service     = 'xdr-workbench-relay'
+                            version     = 2
+                            port        = $Port
+                            expiresUtc  = $expiresAt.ToUniversalTime().ToString('o')
                             secondsLeft = [int][Math]::Max(0, ($expiresAt - (Get-Date)).TotalSeconds)
                         } | ConvertTo-Json -Compress
-                        $healthBytes = [System.Text.Encoding]::UTF8.GetBytes($health)
-                        $response.ContentType = 'application/json'
-                        $response.ContentLength64 = $healthBytes.Length
-                        $response.OutputStream.Write($healthBytes, 0, $healthBytes.Length)
+                        & $sendResponse $stream 200 $health $cors
+                        if (-not $seenByExtension -and $origin -match '-extension://') {
+                            $seenByExtension = $true
+                            Write-Host "The extension can see this standup (it reached $healthUrl)."
+                        }
                         continue
                     }
 
-                    if ($request.HttpMethod -ne 'POST' -or $request.Url.AbsolutePath -ne '/relay') {
-                        $response.StatusCode = 404
+                    if ($request.Method -ne 'POST' -or $request.Path -ne '/relay') {
+                        & $sendResponse $stream 404 $null $cors
                         continue
                     }
 
-                    if ($request.Headers['Authorization'] -ne $expectedAuthHeader) {
-                        Write-Verbose "Rejected relay attempt with an invalid or missing pairing code."
-                        $response.StatusCode = 401
+                    if ($request.Headers['Authorization'] -cne $expectedAuthHeader) {
+                        Write-Host "Rejected a relay with the wrong pairing code. Paste the code shown above." -ForegroundColor Yellow
+                        & $sendResponse $stream 401 $null $cors
                         continue
                     }
 
-                    $reader = [System.IO.StreamReader]::new($request.InputStream, $request.ContentEncoding)
-                    try {
-                        $body = $reader.ReadToEnd()
-                    } finally {
-                        $reader.Close()
-                    }
-
-                    $payload = $body | ConvertFrom-Json -ErrorAction Stop
+                    $payload = $request.Body | ConvertFrom-Json -ErrorAction Stop
                     if (-not $payload.sccAuthCookieValue -and -not $payload.estsAuthCookieValue) {
-                        $response.StatusCode = 400
+                        & $sendResponse $stream 400 $null $cors
                         continue
                     }
 
                     $relayPayload = $payload
-
-                    $responseBytes = [System.Text.Encoding]::UTF8.GetBytes('{"status":"ok"}')
-                    $response.ContentType = 'application/json'
-                    $response.ContentLength64 = $responseBytes.Length
-                    $response.OutputStream.Write($responseBytes, 0, $responseBytes.Length)
+                    & $sendResponse $stream 200 '{"status":"ok"}' $cors
                 } catch {
                     Write-Verbose "Error handling relay request: $($_.Exception.Message)"
-                    $response.StatusCode = 500
+                    try { if ($stream) { & $sendResponse $stream 500 } } catch { Write-Verbose "Could not send the error response: $($_.Exception.Message)" }
                 } finally {
-                    $response.Close()
+                    $client.Close()
                 }
 
                 if ($relayPayload) { break }
             }
         } finally {
             $listener.Stop()
-            $listener.Close()
         }
 
         if (-not $relayPayload) {

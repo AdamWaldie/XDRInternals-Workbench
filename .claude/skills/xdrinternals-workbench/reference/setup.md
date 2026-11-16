@@ -55,7 +55,7 @@ Walk the user through these when the Workbench is new on a machine, or when diag
    4. On the new **XDR Docker Relay** card, click **Details** and turn on **Allow in Incognito**. Without it the extension can't see the incognito sign-in.
    5. Pin it: puzzle-piece icon in the toolbar > pin XDR Docker Relay, so it shows in incognito windows too.
    6. After the repo's extension files change (a `git pull` that touches `chrome-ext`), click the reload arrow on the card. Chrome doesn't pick up changes to an unpacked extension on its own.
-4. Reserve the relay port once, in an elevated PowerShell: `netsh http add urlacl url=http://+:8787/ user="$env:USERDOMAIN\$env:USERNAME"`. The standup adds it itself when run elevated.
+4. Nothing to reserve for the relay port: the listener binds 127.0.0.1 on a plain TCP socket, not HTTP.sys, so no `netsh http add urlacl` is needed.
 5. For a desktop session, connect the repo folder to it, so the device shell can reach it.
 6. Check: `./tools/agent/Test-XdrWorkbench.ps1` on the analyst's machine, and `bash tools/agent/setup.sh` from the device shell (installs PowerShell 7 there if missing).
 7. After the first standup, refresh the tenant list: run `Get-XdrMtoTenantList` through the wrapper with `-OutFile`, and write `Name,TenantId` rows to `<repo>/tenants.local.csv` (git-ignored). The MTO section of `tenants.txt` is the tracked copy.
