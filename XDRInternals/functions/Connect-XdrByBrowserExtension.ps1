@@ -215,29 +215,83 @@
         $relayPayload = $null
         $seenByExtension = $false
 
+        # Connections are served one at a time, but only once they have sent data. Chrome opens
+        # spare sockets (preconnects, backup connects, localhost tried on ::1 and 127.0.0.1) that
+        # may never carry a request. Blocking on one of those starved every real /health probe
+        # and the popup reported "No standup is waiting" until a retry happened to slip through.
+        $pending = [System.Collections.Generic.List[object]]::new()
+
+        # Diagnostic log of the listener's own events (never the pairing code or cookies), so a
+        # listener that stops early can be explained: %TEMP%\xdr-relay-listener.log.
+        $logPath = Join-Path ([System.IO.Path]::GetTempPath()) 'xdr-relay-listener.log'
+        $log = {
+            param([string]$Message)
+            try { Add-Content -LiteralPath $logPath -Value ('{0:HH:mm:ss.fff} {1}' -f (Get-Date), $Message) -Encoding utf8 } catch { Write-Verbose "Relay log write failed: $($_.Exception.Message)" }
+        }
+        try { Set-Content -LiteralPath $logPath -Value "Relay listener log, process $PID" -Encoding utf8 } catch { Write-Verbose "Relay log reset failed: $($_.Exception.Message)" }
+        & $log "Listening on $($listener.LocalEndpoint), expires $($expiresAt.ToString('HH:mm:ss'))"
+        $lastBeat = Get-Date
+        $exitReason = 'stopped from outside the loop (Ctrl+C, window closed, or pipeline stopped)'
+
         try {
             while ((Get-Date) -lt $deadline) {
-                # Wait in short slices so Ctrl+C still stops the standup.
-                $acceptTask = $listener.AcceptTcpClientAsync()
-                while (-not $acceptTask.Wait(500)) {
-                    if ((Get-Date) -ge $deadline) { break }
+                if (((Get-Date) - $lastBeat).TotalSeconds -ge 15) {
+                    $lastBeat = Get-Date
+                    & $log "alive: bound=$($listener.Server.IsBound) pending=$($pending.Count)"
                 }
-                if (-not $acceptTask.IsCompleted) { break }
+                # A connection the browser resets or abandons must never end the standup, so socket
+                # errors here only drop that one connection.
+                try {
+                    while ($listener.Pending()) {
+                        $accepted = $listener.AcceptTcpClient()
+                        & $log "accept from $($accepted.Client.RemoteEndPoint)"
+                        $pending.Add([pscustomobject]@{ Client = $accepted; Since = Get-Date })
+                    }
+                } catch {
+                    & $log "accept failed: $($_.Exception.Message)"
+                }
 
-                $client = $acceptTask.Result
+                $client = $null
+                foreach ($entry in @($pending)) {
+                    try {
+                        $socket = $entry.Client.Client
+                        if ($socket.Available -gt 0) {
+                            $client = $entry.Client
+                            [void]$pending.Remove($entry)
+                            break
+                        }
+                        $closedByPeer = $socket.Poll(0, [System.Net.Sockets.SelectMode]::SelectRead) -and $socket.Available -eq 0
+                    } catch {
+                        & $log "socket check failed: $($_.Exception.Message)"
+                        $closedByPeer = $true
+                    }
+                    if ($closedByPeer -or ((Get-Date) - $entry.Since).TotalSeconds -gt 10) {
+                        & $log ("drop idle socket ({0})" -f $(if ($closedByPeer) { 'closed by client' } else { 'no request in 10 s' }))
+                        [void]$pending.Remove($entry)
+                        try { $entry.Client.Close() } catch { Write-Verbose "Ignoring idle socket cleanup error: $($_.Exception.Message)" }
+                    }
+                }
+                if (-not $client) {
+                    # Short sleep so Ctrl+C still stops the standup and the loop stays cheap.
+                    Start-Sleep -Milliseconds 20
+                    continue
+                }
+
                 $stream = $null
                 try {
-                    $client.ReceiveTimeout = 5000
+                    # The request has started arriving; the rest follows within milliseconds.
+                    $client.ReceiveTimeout = 3000
                     $client.SendTimeout = 5000
                     $stream = $client.GetStream()
                     try {
                         $request = & $readRequest $stream
                     } catch {
-                        Write-Verbose "Rejected a malformed request: $($_.Exception.Message)"
+                        & $log "malformed request: $($_.Exception.Message)"
                         & $sendResponse $stream 400
                         continue
                     }
-                    if (-not $request) { continue }
+                    if (-not $request) { & $log 'connection closed without a request'; continue }
+                    & $log "request $($request.Method) $($request.Path) host=$($request.Headers['Host']) extension=$([bool]($request.Headers['Origin'] -match '-extension://'))"
 
                     # Only loopback host names: a web page that rebinds its own DNS name to
                     # 127.0.0.1 would send its own name here.
@@ -304,7 +358,7 @@
                     $relayPayload = $payload
                     & $sendResponse $stream 200 '{"status":"ok"}' $cors
                 } catch {
-                    Write-Verbose "Error handling relay request: $($_.Exception.Message)"
+                    & $log "request handling failed: $($_.Exception.Message)"
                     try { if ($stream) { & $sendResponse $stream 500 } } catch { Write-Verbose "Could not send the error response: $($_.Exception.Message)" }
                 } finally {
                     $client.Close()
@@ -312,7 +366,14 @@
 
                 if ($relayPayload) { break }
             }
+            $exitReason = if ($relayPayload) { 'relay received' } else { 'deadline reached' }
+        } catch {
+            $exitReason = "error: $($_.Exception.GetType().Name): $($_.Exception.Message) at $($_.InvocationInfo.ScriptLineNumber)"
+            throw
         } finally {
+            # Also reached on Ctrl+C or when the window closes, which no catch block sees.
+            & $log "listener stopping: $exitReason"
+            foreach ($entry in $pending) { try { $entry.Client.Close() } catch { Write-Verbose "Ignoring socket cleanup error: $($_.Exception.Message)" } }
             $listener.Stop()
         }
 

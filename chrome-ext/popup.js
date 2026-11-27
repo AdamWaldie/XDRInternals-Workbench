@@ -20,7 +20,7 @@ const NOTHING_LISTENING = 'Nothing on this computer is waiting for a relay. ' +
 
 // Turns a failed probe into a short reason, so "nothing is waiting" says what actually happened.
 function probeError(err) {
-    if (err && err.name === 'AbortError') { return 'no answer within 1.5 s'; }
+    if (err && err.name === 'AbortError') { return 'no answer within 2.5 s'; }
     const msg = err && err.message ? err.message : String(err);
     return msg === 'Failed to fetch' ? 'connection refused or blocked (Failed to fetch)' : msg;
 }
@@ -47,7 +47,7 @@ function manualPort() {
     return Number.isInteger(value) && value >= 1024 && value <= 65535 ? value : null;
 }
 
-async function fetchWithTimeout(url, options = {}, ms = 1500) {
+async function fetchWithTimeout(url, options = {}, ms = 2500) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ms);
     try {
@@ -89,7 +89,23 @@ async function findListeners() {
             })());
         }
     }
-    const found = (await Promise.all(probes)).filter(Boolean);
+    // A waiting standup answers within milliseconds, but on Windows a closed port takes about
+    // 2 s to refuse (and localhost tries ::1 first). So don't wait for every refusal: once one
+    // standup has answered, give any others a moment to answer too, then stop looking.
+    const found = [];
+    await new Promise((resolve) => {
+        let remaining = probes.length;
+        let grace = null;
+        for (const probe of probes) {
+            probe.then((listener) => {
+                if (listener) {
+                    found.push(listener);
+                    if (!grace) { grace = setTimeout(resolve, 200); }
+                }
+                if (--remaining === 0) { resolve(); }
+            });
+        }
+    });
     // One entry per port: the same listener can answer on both hosts.
     const byPort = new Map();
     for (const l of found) {
@@ -98,7 +114,24 @@ async function findListeners() {
     return { listeners: [...byPort.values()], errors };
 }
 
+// A single probe round can miss a standup that is busy with another request, so try a few
+// times before telling the analyst nothing is waiting.
+async function findListenersWithRetry(attempts = 3, delayMs = 700) {
+    let result = await findListeners();
+    for (let i = 1; i < attempts && !result.listeners.length; i++) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        result = await findListeners();
+    }
+    return result;
+}
+
+// Set after a relay is accepted: the standup stops listening then, which is expected.
+let relayedToPort = null;
+
 function describeListeners({ listeners, errors }) {
+    if (!listeners.length && relayedToPort !== null) {
+        return { ok: true, text: `Relayed to port ${relayedToPort}. The standup has stopped listening, as expected; carry on in PowerShell.` };
+    }
     if (!listeners.length) {
         const detail = errors.length ? ` Checked: ${summarizeErrors(errors)}.` : '';
         return { ok: false, text: `No standup is waiting on this computer. Run Start-XdrWorkbench.ps1 in PowerShell 7 here first.${detail}` };
@@ -130,8 +163,14 @@ chrome.storage.local.get(['xdrRelayPort'], (data) => {
     if (data.xdrRelayPort && data.xdrRelayPort !== 8787) {
         els.port.value = data.xdrRelayPort;
     }
-    refreshListenerState();
-    setInterval(refreshListenerState, 3000);
+    // Chrome only shows the popup once its page has loaded and painted. Starting 20 port probes
+    // during that kept the toolbar icon lit for seconds before the popup appeared, so the probes
+    // wait until the popup is on screen.
+    const start = () => setTimeout(() => {
+        refreshListenerState();
+        setInterval(refreshListenerState, 3000);
+    }, 100);
+    if (document.readyState === 'complete') { start(); } else { window.addEventListener('load', start, { once: true }); }
 });
 
 // Two credentials matter, in priority order:
@@ -220,7 +259,7 @@ els.send.addEventListener('click', async () => {
     try {
         // Find the listener before touching any cookie, so a missing standup is named as such
         // rather than surfacing as the browser's bare "Failed to fetch".
-        const { listeners, errors } = await findListeners();
+        const { listeners, errors } = await findListenersWithRetry();
         if (!listeners.length) {
             throw new Error(`${NOTHING_LISTENING} Checked: ${summarizeErrors(errors)}.`);
         }
@@ -299,6 +338,7 @@ els.send.addEventListener('click', async () => {
             throw new Error(`Relay not accepted: ${lastFailure}.`);
         }
 
+        relayedToPort = accepted.port;
         els.status.textContent = `Session relayed from ${where} to port ${accepted.port}${mtoNote}. Check the PowerShell window: confirm the tenant it prints is the customer you meant.`;
         refreshListenerState();
     } catch (err) {
